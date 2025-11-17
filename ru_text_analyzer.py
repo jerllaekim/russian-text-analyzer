@@ -3,7 +3,6 @@ import re
 import json
 import html
 import urllib.parse
-
 import pandas as pd
 import streamlit as st
 from pymystem3 import Mystem
@@ -84,12 +83,11 @@ if not api_key:
 
 # 클라이언트 초기화
 try:
-    client = genai.GenerativeModel(model_name="gemini-1.5-flash")
+    client = genai.GenerativeModel(model_name="gemini-1.5-flash-latest") # ✅ 이렇게 수정
     genai.configure(api_key=api_key)
 except Exception as e:
     st.error(f"Gemini 클라이언트 초기화 실패: {e}")
     st.stop()
-
 SYSTEM_INSTRUCTION = """
 너는 러시아어-한국어 학습을 돕는 도우미이다.
 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 제공한다.

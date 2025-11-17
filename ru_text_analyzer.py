@@ -149,6 +149,9 @@ left, right = st.columns([2, 1], gap="large")
 # ─────────────────────────────
 # 왼쪽 영역 — 원문 텍스트 (인라인 하이퍼링크)
 # ─────────────────────────────
+# ─────────────────────────────
+# 왼쪽 영역 — 원문 텍스트 (인라인 하이퍼링크)
+# ─────────────────────────────
 with left:
     st.subheader("텍스트 분석 결과")
     st.caption("단어를 클릭하면 오른쪽에 기본형, 뜻, 예문이 표시되고, 아래 ‘선택한 단어 모음’에 누적됩니다.")
@@ -176,6 +179,9 @@ with left:
                 color = "#000000"
                 font_weight = "400"
             href = f"?w={urllib.parse.quote_plus(word)}"
+            
+            # ⭐️ [핵심] target="_self" 가 있는지 다시 확인해 주세요.
+            # 이것이 없으면 새 탭이 열리고 모든 기록이 초기화됩니다.
             html_parts.append(
                 f'<a href="{href}" target="_self" style="color:{color}; font-weight:{font_weight}; text-decoration:none;">'
                 f'{html.escape(word)}</a>'

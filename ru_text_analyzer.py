@@ -70,61 +70,6 @@ def lemmatize_ru(word: str) -> str:
     lemmas = mystem.lemmatize(word)
     return (lemmas[0] if lemmas else word).strip()
 
-
-# ─────────────────────────────
-# Gemini API 설정
-# ─────────────────────────────
-# Streamlit Secrets에서 API 키를 가져옵니다.
-api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
-
-if not api_key:
-    st.error("GEMINI_API_KEY가 설정되어 있지 않습니다. Streamlit Secrets에 GEMINI_API_KEY를 넣어주세요.")
-    st.stop()
-
-# 클라이언트 초기화
-try:
-    # ⭐️ [최종 수정] 404 오류를 피하기 위해 가장 안정적인 gemini-pro 모델로 변경
-    client = genai.GenerativeModel(model_name="gemini-pro")
-    genai.configure(api_key=api_key)
-except Exception as e:
-    st.error(f"Gemini 클라이언트 초기화 실패: {e}")
-    st.stop()
-SYSTEM_INSTRUCTION = """
-너는 러시아어-한국어 학습을 돕는 도우미이다.
-러시아어 단어에 대해 간단한 한국어 뜻과 예문을 제공한다.
-반드시 유효한 JSON만 출력해야 한다.
-"""
-
-def build_prompt(word: str, lemma: str) -> str:
-    return f"""
-{SYSTEM_INSTRUCTION}
-
-러시아어 단어: {word}
-기본형(lemma): {lemma}
-
-다음 형식의 JSON만 출력해라:
-
-{{
-  "ko_meanings": ["뜻1", "뜻2"],
-  "examples": [
-    {{
-      "ru": "러시아어 예문1 (단어 또는 lemma 포함)",
-      "ko": "예문1의 한국어 번역"
-    }},
-    {{
-      "ru": "러시아어 예문2 (단어 또는 lemma 포함)",
-      "ko": "예문2의 한국어 번역"
-    }}
-  ]
-}}
-
-요구사항:
-- "ko_meanings"에는 너무 길지 않은 한국어 뜻 1~3개를 넣어라.
-- "examples"에는 자연스러운 문장 2개를 넣어라.
-- 각 예문에는 반드시 이 단어(또는 형태 변화된 형태)를 포함해야 한다.
-- 반드시 JSON만 출력하고, 그 외의 텍스트는 출력하지 마라.
-"""
-
 # Gemini API 호출 함수 (st.cache_data 사용)
 @st.cache_data(show_spinner=False)
 def build_prompt(word: str, lemma: str) -> str:

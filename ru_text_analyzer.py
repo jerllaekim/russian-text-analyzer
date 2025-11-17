@@ -7,8 +7,6 @@ Original file is located at
     https://colab.research.google.com/drive/1Bw4WZCs7g8WDXOD8KKVoeMEGw9Qnkxh4
 """
 
-pip install streamlit pymystem3 googletrans==4.0.0-rc1 requests lxml beautifulsoup4
-
 import re
 import streamlit as st
 from pymystem3 import Mystem

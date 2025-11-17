@@ -134,8 +134,8 @@ def fetch_from_gemini(word: str, lemma: str):
 # ─────────────────────────────
 params = st.query_params
 clicked_from_url = None
-if "w" in params and params["w"]:
-    clicked_from_url = params["w"][0]
+if "w" in params: # 'and params["w"]' 체크는 불필요합니다.
+    clicked_from_url = params["w"]  # [0]을 제거하고 값 자체를 사용합니다.
 
 
 # ─────────────────────────────

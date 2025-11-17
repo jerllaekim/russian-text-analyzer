@@ -2,6 +2,4 @@ streamlit
 pymystem3
 google-genai
 pandas
-google-generativeai
-
-# 2025-11-17: 캐시 삭제를 위한 강제 재빌드
+google-generativeai>=0.4.0

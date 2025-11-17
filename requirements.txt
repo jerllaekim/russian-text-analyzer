@@ -1,3 +1,4 @@
 streamlit
 pymystem3
 google-genai
+pandas

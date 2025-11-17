@@ -1,3 +1,4 @@
+st.cache_data.clear()
 import os
 import re
 import json

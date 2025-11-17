@@ -128,25 +128,63 @@ def build_prompt(word: str, lemma: str) -> str:
 
 # Gemini API 호출 함수 (st.cache_data 사용)
 @st.cache_data(show_spinner=False)
+def build_prompt(word: str, lemma: str) -> str:
+    return f"""
+{SYSTEM_INSTRUCTION}
+
+러시아어 단어: {word}
+기본형(lemma): {lemma}
+
+다음 형식의 JSON만 출력해라:
+
+{{
+  "ko_meanings": ["뜻1", "뜻2"],
+  "examples": [
+    {{
+      "ru": "러시아어 예문1 (단어 또는 lemma 포함)",
+      "ko": "예문1의 한국어 번역"
+    }},
+    {{
+      "ru": "러시아어 예문2 (단어 또는 lemma 포함)",
+      "ko": "예문2의 한국어 번역"
+    }}
+  ]
+}}
+
+요구사항:
+- "ko_meanings"에는 너무 길지 않은 한국어 뜻 1~3개를 넣어라.
+- "examples"에는 자연스러운 문장 2개를 넣어라.
+- 각 예문에는 반드시 이 단어(또는 형태 변화된 형태)를 포함해야 한다.
+- 반드시 JSON만 출력하고, 그 외의 텍스트는 출력하지 마라.
+"""
+
+# Gemini API 호출 함수 (st.cache_data 사용) - (⭐️ 오류 처리 강화 ⭐️)
+@st.cache_data(show_spinner=False)
 def fetch_from_gemini(word: str, lemma: str):
-    prompt = build_prompt(word, lemma)
-    response = client.generate_content(contents=prompt)
-    text = response.text.strip()
-
-    # ```json ... ``` 로 감싸져 오는 경우 제거
-    if text.startswith("```"):
-        text = text.strip("`")
-        lines = text.splitlines()
-        if lines and lines[0].lower().startswith("json"):
-            text = "\n".join(lines[1:])
-
     try:
+        prompt = build_prompt(word, lemma)
+        response = client.generate_content(contents=prompt)
+        text = response.text.strip()
+
+        # ```json ... ``` 로 감싸져 오는 경우 제거
+        if text.startswith("```"):
+            text = text.strip("`")
+            lines = text.splitlines()
+            if lines and lines[0].lower().startswith("json"):
+                text = "\n".join(lines[1:])
+
+        # JSON 파싱 시도
         data = json.loads(text)
         return data
-    except json.JSONDecodeError as e:
-        st.error(f"API 응답 (JSON) 파싱 오류: {e}\n응답 내용: {text}")
-        return {} # 오류 발생 시 빈 딕셔너리 반환
 
+    except json.JSONDecodeError as e:
+        # 오류 1: Gemini가 JSON이 아닌 일반 텍스트(예: "죄송합니다")를 반환
+        st.error(f"API 응답 파싱 오류 (JSON 아님): {e}\n\n[Gemini 응답 원문]\n{text}")
+        return {}
+    except Exception as e:
+        # 오류 2: 그 외 모든 오류 (API 키, 인증, 할당량 등)
+        st.error(f"Gemini API 호출 중 심각한 오류 발생:\n{e}")
+        return {}
 
 # ─────────────────────────────
 # URL 쿼리 파라미터 기반 클릭 처리 (⭐️ 수정됨 ⭐️)

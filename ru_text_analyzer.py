@@ -5,7 +5,7 @@ import json
 import pandas as pd
 import streamlit as st
 from pymystem3 import Mystem
-from google import genai  # google-genai 패키지
+from google import genai
 
 
 # ─────────────────────────────
@@ -15,67 +15,66 @@ st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
 st.title("러시아어 텍스트 분석기")
 
 if "clicked_word" not in st.session_state:
-    st.session_state.clicked_word = None          # 현재 상세보기 중인 단어(표면형)
+    st.session_state.clicked_word = None          # 현재 상세보기 단어(표면형)
 if "selected_words" not in st.session_state:
-    st.session_state.selected_words = []          # 사용자가 선택한 단어(표면형) 리스트
+    st.session_state.selected_words = []          # 선택된 단어(표면형) 리스트
 if "word_info" not in st.session_state:
-    # lemma 기준으로 뜻을 누적 저장
-    # 예: {"человек": {"lemma": "человек", "ko_meanings": ["사람", "인간"]}, ...}
-    st.session_state.word_info = {}
+    st.session_state.word_info = {}              # lemma -> {lemma, ko_meanings}
 
 
 # ─────────────────────────────
-# CSS: 단어 버튼은 텍스트처럼, 선택되면 파란색
+# CSS: 단어 버튼을 텍스트처럼 보이게
 # ─────────────────────────────
 st.markdown(
     """
 <style>
-/* 단어용 버튼: 텍스트처럼 보이게 */
-div.word-btn-normal > button,
-div.word-btn-selected > button {
-    border: none;
-    background: transparent;
-    padding: 0 2px 2px 0;
-    margin: 0;
-    min-width: 0;
-    font-size: 1rem;
-}
-
-/* 처음 상태: 검은 글씨 */
+/* 단어 버튼용 래퍼 - 일반(검정) */
 div.word-btn-normal > button {
-    color: #000000;
-}
-div.word-btn-normal > button:hover {
-    text-decoration: underline;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 4px 2px 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    color: #000000 !important;
+    font-size: 1rem !important;
 }
 
-/* 선택된 단어: 파란색 + 조금 두껍게 */
+/* 단어 버튼용 래퍼 - 선택됨(파랑) */
 div.word-btn-selected > button {
-    color: #1E88E5;
-    font-weight: 600;
+    border: none !important;
+    background: transparent !important;
+    box-shadow: none !important;
+    padding: 0 4px 2px 0 !important;
+    margin: 0 !important;
+    min-width: 0 !important;
+    color: #1E88E5 !important;
+    font-size: 1rem !important;
+    font-weight: 600 !important;
 }
+
+/* 호버 시 밑줄만 */
+div.word-btn-normal > button:hover,
 div.word-btn-selected > button:hover {
     text-decoration: underline;
 }
 
-/* 선택 단어 칩 */
-div.selected-word-chip > button {
-    border-radius: 999px;
-    padding: 2px 10px;
-    margin: 3px;
-    border: 1px solid #1E88E5;
-    background-color: rgba(30, 136, 229, 0.06);
-    color: #1E88E5;
+/* 선택한 단어 모음(칩 느낌) */
+div.selected-chip > button {
+    border-radius: 999px !important;
+    padding: 2px 10px !important;
+    margin: 3px !important;
+    border: 1px solid #1E88E5 !important;
+    background-color: rgba(30, 136, 229, 0.06) !important;
+    color: #1E88E5 !important;
 }
-
-/* 현재 선택된 단어 칩(✅) */
-div.selected-word-chip-active > button {
-    border-radius: 999px;
-    padding: 2px 10px;
-    margin: 3px;
-    border: 1px solid #1E88E5;
-    background-color: rgba(30, 136, 229, 0.18);
-    color: #1E88E5;
+div.selected-chip-active > button {
+    border-radius: 999px !important;
+    padding: 2px 10px !important;
+    margin: 3px !important;
+    border: 1px solid #1E88E5 !important;
+    background-color: rgba(30, 136, 229, 0.18) !important;
+    color: #1E88E5 !important;
 }
 </style>
 """,
@@ -84,7 +83,7 @@ div.selected-word-chip-active > button {
 
 
 # ─────────────────────────────
-# 형태소 분석기 (lemma)
+# 형태소 분석기
 # ─────────────────────────────
 mystem = Mystem()
 
@@ -95,7 +94,7 @@ def lemmatize_ru(word: str) -> str:
 
 
 # ─────────────────────────────
-# Gemini API 설정
+# Gemini 설정
 # ─────────────────────────────
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
@@ -109,7 +108,6 @@ SYSTEM_INSTRUCTION = """
 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 제공한다.
 반드시 유효한 JSON만 출력해야 한다.
 """
-
 
 def build_prompt(word: str, lemma: str) -> str:
     return f"""
@@ -133,33 +131,22 @@ def build_prompt(word: str, lemma: str) -> str:
     }}
   ]
 }}
-
-요구사항:
-- "ko_meanings"에는 너무 길지 않은 한국어 뜻 1~3개를 넣어라.
-- "examples"에는 자연스러운 문장 2개를 넣어라.
-- 각 예문에는 반드시 이 단어(또는 형태 변화된 형태)를 포함해야 한다.
-- 반드시 JSON만 출력하고, 그 외의 텍스트는 출력하지 마라.
 """
-
 
 @st.cache_data(show_spinner=False)
 def fetch_from_gemini(word: str, lemma: str):
     prompt = build_prompt(word, lemma)
-    response = client.models.generate_content(
+    res = client.models.generate_content(
         model="gemini-2.0-flash",
         contents=prompt,
     )
-    text = response.text.strip()
-
-    # ```json ... ``` 로 감싸져 오는 경우 제거
+    text = res.text.strip()
     if text.startswith("```"):
         text = text.strip("`")
         lines = text.splitlines()
         if lines and lines[0].lower().startswith("json"):
             text = "\n".join(lines[1:])
-
-    data = json.loads(text)
-    return data
+    return json.loads(text)
 
 
 # ─────────────────────────────
@@ -174,30 +161,31 @@ left, right = st.columns([2, 1], gap="large")
 
 
 # ─────────────────────────────
-# 왼쪽 영역 — 텍스트 (텍스트처럼 보이는 버튼들)
+# 왼쪽: 텍스트 (텍스트 느낌 버튼, 가로 배열)
 # ─────────────────────────────
 with left:
     st.subheader("텍스트 분석 결과")
-    st.caption("단어(검은 글씨)를 클릭하면 오른쪽에 기본형, 뜻, 예문이 표시되고, 아래 ‘선택한 단어 모음’에 누적됩니다.")
+    st.caption("단어(검은 글씨)를 클릭하면 파란색으로 바뀌고, 오른쪽/하단에 정보가 표시됩니다.")
 
-    # 버튼을 여러 열로 배치해서 세로 줄 느낌 줄이기
-    row_size = 16  # 한 줄에 최대 몇 개씩 (간격 줄이고 싶으면 숫자 키워도 됨)
+    # 핵심: 한 줄에 5개씩만 → 각 칸이 넓어서 글자가 세로로 안 쪼개짐
+    row_size = 5
     for start in range(0, len(tokens), row_size):
         row_tokens = tokens[start:start + row_size]
-        cols = st.columns(len(row_tokens))
-        for i, (col, tok) in enumerate(zip(cols, row_tokens)):
+        cols = st.columns(row_size)
+        for j, tok in enumerate(row_tokens):
+            col = cols[j]
             with col:
                 if re.match(r"\w+", tok, flags=re.UNICODE):
-                    # 이미 선택된 단어면 파란색 / 아니면 검은색
-                    cls = "word-btn-selected" if tok in st.session_state.selected_words else "word-btn-normal"
-                    st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
-                    if st.button(tok, key=f"tok_{start}_{i}_{tok}"):
+                    # 이미 선택된 단어면 파란색, 아니면 검정
+                    wrapper_class = "word-btn-selected" if tok in st.session_state.selected_words else "word-btn-normal"
+                    st.markdown(f'<div class="{wrapper_class}">', unsafe_allow_html=True)
+                    if st.button(tok, key=f"tok_{start}_{j}_{tok}"):
                         st.session_state.clicked_word = tok
                         if tok not in st.session_state.selected_words:
                             st.session_state.selected_words.append(tok)
                     st.markdown("</div>", unsafe_allow_html=True)
                 else:
-                    # 문장부호 / 공백 등은 그대로 출력
+                    # 문장부호는 그냥 출력
                     st.write(tok)
 
     with st.expander("초기화"):
@@ -209,7 +197,7 @@ with left:
 
 
 # ─────────────────────────────
-# 오른쪽 영역 — 현재 선택 단어 상세
+# 오른쪽: 단어 정보
 # ─────────────────────────────
 with right:
     st.subheader("📚 단어 정보")
@@ -229,14 +217,13 @@ with right:
             ko_meanings = []
             examples = []
 
-        # word_info 세션에 lemma 기준으로 누적 저장
+        # word_info에 누적
         if ko_meanings:
             st.session_state.word_info[lemma] = {
                 "lemma": lemma,
                 "ko_meanings": ko_meanings,
             }
 
-        # 한국어 뜻 표시
         if ko_meanings:
             st.markdown("**한국어 뜻:**")
             for m in ko_meanings:
@@ -244,7 +231,6 @@ with right:
         else:
             st.write("한국어 뜻을 가져올 수 없습니다.")
 
-        # 예문 표시
         if examples:
             st.markdown("### 📖 예문")
             for ex in examples:
@@ -257,19 +243,17 @@ with right:
         else:
             st.write("예문을 가져올 수 없습니다.")
 
-        # 🔎 외부 사전 / 코퍼스 링크
         st.markdown("### 🔗 외부 사전 / 코퍼스 검색")
         lemma_for_link = lemma or cw
         mt_url = f"https://www.multitran.com/m.exe?l1=2&l2=5&s={lemma_for_link}"
         rnc_url = f"https://ruscorpora.ru/search?search={lemma_for_link}"
         st.markdown(f"[Multitran에서 검색]({mt_url})  \n[러시아 국립 코퍼스에서 검색]({rnc_url})")
-
     else:
         st.info("왼쪽 텍스트에서 단어를 클릭하면 여기 정보가 나타납니다.")
 
 
 # ─────────────────────────────
-# 하단 — 선택한 단어 모음 (칩 + 표 + CSV)
+# 하단: 선택한 단어 모음 + lemma/뜻 표 + CSV
 # ─────────────────────────────
 st.divider()
 st.subheader("📝 선택한 단어 모음")
@@ -281,35 +265,28 @@ word_info = st.session_state.word_info
 if not selected and not word_info:
     st.caption("아직 클릭해서 누적된 단어가 없습니다. 위 텍스트에서 단어를 클릭해보세요.")
 else:
-    # 1) 칩 형태로 선택 단어들
+    # 칩 형태로 표시 (그냥 시각용)
     if selected:
         cols = st.columns(min(4, len(selected)))
         for idx, w in enumerate(selected):
             col = cols[idx % len(cols)]
             with col:
                 if w == cw:
-                    st.markdown('<div class="selected-word-chip-active">', unsafe_allow_html=True)
-                    label = f"✅ {w}"
-                    if st.button(label, key=f"sel_{w}_active"):
-                        st.session_state.clicked_word = w
-                        st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    st.markdown("<div class='selected-chip-active'>", unsafe_allow_html=True)
+                    st.button(f"✅ {w}", key=f"chip_{w}_active")
+                    st.markdown("</div>", unsafe_allow_html=True)
                 else:
-                    st.markdown('<div class="selected-word-chip">', unsafe_allow_html=True)
-                    label = w
-                    if st.button(label, key=f"sel_{w}"):
-                        st.session_state.clicked_word = w
-                        st.rerun()
-                    st.markdown('</div>', unsafe_allow_html=True)
+                    st.markdown("<div class='selected-chip'>", unsafe_allow_html=True)
+                    st.button(w, key=f"chip_{w}")
+                    st.markdown("</div>", unsafe_allow_html=True)
 
-    # 2) lemma / 한국어 뜻 요약 표 + CSV
+    # lemma / 한국어 뜻 표 + CSV
     if word_info:
         rows = []
         for lemma, info in word_info.items():
             meanings = info.get("ko_meanings", [])
-            short_kr = "; ".join(meanings[:2])  # 한두 개만
+            short_kr = "; ".join(meanings[:2])
             rows.append({"lemma": lemma, "한국어 뜻": short_kr})
-
         df = pd.DataFrame(rows)
         st.dataframe(df, hide_index=True)
 
@@ -323,7 +300,7 @@ else:
 
 
 # ─────────────────────────────
-# 맨 아래 — 직접 단어 검색
+# 맨 아래: 직접 단어 검색
 # ─────────────────────────────
 st.divider()
 st.subheader("🔍 직접 단어 검색")
@@ -344,7 +321,6 @@ if manual:
         ko_meanings = []
         examples = []
 
-    # 직접 검색으로 가져온 것도 word_info에 누적
     if ko_meanings:
         st.session_state.word_info[lemma] = {
             "lemma": lemma,

@@ -1,6 +1,9 @@
 import os
 import re
 import json
+import html
+import urllib.parse
+
 import pandas as pd
 import streamlit as st
 from pymystem3 import Mystem
@@ -14,33 +17,19 @@ st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
 st.title("러시아어 텍스트 분석기")
 
 if "clicked_word" not in st.session_state:
-    st.session_state.clicked_word = None
+    st.session_state.clicked_word = None          # 현재 상세보기 중인 단어(표면형)
 if "selected_words" not in st.session_state:
-    st.session_state.selected_words = []  # 사용자가 클릭한 표면형 단어들
+    st.session_state.selected_words = []          # 사용자가 선택한 단어(표면형) 리스트
 if "word_info" not in st.session_state:
-    # lemma 기준으로 의미들을 누적 저장하는 dict
+    # lemma 기준으로 뜻을 누적 저장
     # 예: {"человек": {"lemma": "человек", "ko_meanings": ["사람", "인간"]}, ...}
     st.session_state.word_info = {}
 
 
-# 버튼을 텍스트처럼 보이게 하는 CSS (네모 버튼 느낌 제거)
+# 선택 단어 칩용 CSS
 st.markdown(
     """
 <style>
-/* 모든 기본 버튼을 텍스트 스타일로 */
-div.stButton > button {
-    border: none;
-    background: none;
-    padding: 0;
-    margin: 0 6px 4px 0;
-    color: #1E88E5;
-    font-size: 1rem;
-}
-div.stButton > button:hover {
-    text-decoration: underline;
-}
-
-/* 선택 단어 모음 영역의 버튼을 칩처럼 보이게 */
 div.selected-word-chip > button {
     border-radius: 999px;
     padding: 2px 10px;
@@ -48,8 +37,6 @@ div.selected-word-chip > button {
     border: 1px solid #1E88E5;
     background-color: rgba(30, 136, 229, 0.06);
 }
-
-/* 현재 선택된 단어(✅ 붙은 애)는 배경을 조금 더 진하게 */
 div.selected-word-chip-active > button {
     border-radius: 999px;
     padding: 2px 10px;
@@ -143,45 +130,68 @@ def fetch_from_gemini(word: str, lemma: str):
 
 
 # ─────────────────────────────
+# URL 쿼리 파라미터 기반 클릭 처리
+# ─────────────────────────────
+params = st.query_params
+clicked_from_url = None
+if "w" in params and params["w"]:
+    clicked_from_url = params["w"][0]
+
+
+# ─────────────────────────────
 # 텍스트 입력
 # ─────────────────────────────
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка.")
-
-# 단어 / 문장부호 분리
-tokens = re.findall(r"\w+|[^\w\s]", text, flags=re.UNICODE)
 
 left, right = st.columns([2, 1], gap="large")
 
 
 # ─────────────────────────────
-# 왼쪽 영역 — 텍스트 (그리드로 배치)
+# 왼쪽 영역 — 원문 텍스트 (인라인 하이퍼링크)
 # ─────────────────────────────
 with left:
     st.subheader("텍스트 분석 결과")
-    st.caption("단어(파란 글자)를 클릭하면 오른쪽에 기본형, 뜻, 예문이 표시되고, 아래 표에 누적됩니다.")
+    st.caption("단어를 클릭하면 오른쪽에 기본형, 뜻, 예문이 표시되고, 아래 ‘선택한 단어 모음’에 누적됩니다.")
 
-    # 단어들을 여러 열로 배치해서 세로 한줄 느낌 줄이기
-    row_size = 8  # 한 줄에 최대 몇 개씩
-    for start in range(0, len(tokens), row_size):
-        row_tokens = tokens[start:start + row_size]
-        cols = st.columns(len(row_tokens))
-        for col, tok in zip(cols, row_tokens):
-            with col:
-                if re.match(r"\w+", tok, flags=re.UNICODE):
-                    if st.button(tok, key=f"tok_{start}_{tok}_{id(tok)}"):
-                        # 현재 선택 단어 갱신
-                        st.session_state.clicked_word = tok
-                        # 표면형 기준 누적 (중복 제거)
-                        if tok not in st.session_state.selected_words:
-                            st.session_state.selected_words.append(tok)
-                else:
-                    st.write(tok)
+    # 클릭된 단어가 있으면 상태에 반영 + 누적
+    if clicked_from_url:
+        st.session_state.clicked_word = clicked_from_url
+        if clicked_from_url not in st.session_state.selected_words:
+            st.session_state.selected_words.append(clicked_from_url)
+
+    # 텍스트를 word / non-word 단위로 split
+    segments = re.split(r'(\w+)', text, flags=re.UNICODE)
+
+    html_parts = []
+    for seg in segments:
+        if not seg:
+            continue
+        if re.fullmatch(r'\w+', seg, flags=re.UNICODE):
+            word = seg
+            # 아직 선택되지 않은 단어는 검은색, 선택된 단어는 파란색
+            if word in st.session_state.selected_words:
+                color = "#1E88E5"
+                font_weight = "600"
+            else:
+                color = "#000000"
+                font_weight = "400"
+            href = f"?w={urllib.parse.quote_plus(word)}"
+            html_parts.append(
+                f'<a href="{href}" style="color:{color}; font-weight:{font_weight}; text-decoration:none;">'
+                f'{html.escape(word)}</a>'
+            )
+        else:
+            html_parts.append(html.escape(seg))
+
+    html_text = "".join(html_parts)
+    st.markdown(html_text, unsafe_allow_html=True)
 
     with st.expander("초기화"):
         if st.button("🔄 선택 & 누적 데이터 초기화"):
             st.session_state.clicked_word = None
             st.session_state.selected_words = []
             st.session_state.word_info = {}
+            st.query_params.clear()
             st.rerun()
 
 
@@ -206,7 +216,7 @@ with right:
             ko_meanings = []
             examples = []
 
-        # word_info 세션에 누적 저장 (lemma 기준, 기존 것 덮어쓰기)
+        # word_info 세션에 lemma 기준으로 누적 저장
         if ko_meanings:
             st.session_state.word_info[lemma] = {
                 "lemma": lemma,
@@ -242,11 +252,11 @@ with right:
         st.markdown(f"[Multitran에서 검색]({mt_url})  \n[러시아 국립 코퍼스에서 검색]({rnc_url})")
 
     else:
-        st.info("왼쪽 단어를 클릭하면 여기 정보가 나타납니다.")
+        st.info("왼쪽 텍스트에서 단어를 클릭하면 여기 정보가 나타납니다.")
 
 
 # ─────────────────────────────
-# 하단 — 누적 선택 단어 모음 & 표 + CSV
+# 하단 — 선택한 단어 모음 (칩 + 표 + CSV)
 # ─────────────────────────────
 st.divider()
 st.subheader("📝 선택한 단어 모음")
@@ -254,52 +264,50 @@ st.subheader("📝 선택한 단어 모음")
 selected = st.session_state.selected_words
 cw = st.session_state.clicked_word
 
-# 1) 칩 형태로 선택 단어들 (클릭하면 다시 위 정보 패널 갱신)
-if selected:
-    cols = st.columns(min(4, len(selected)))
-    for idx, w in enumerate(selected):
-        col = cols[idx % len(cols)]
-        with col:
-            if w == cw:
-                st.markdown('<div class="selected-word-chip-active">', unsafe_allow_html=True)
-                label = f"✅ {w}"
-                if st.button(label, key=f"sel_{w}_active"):
-                    st.session_state.clicked_word = w
-                    st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
-            else:
-                st.markdown('<div class="selected-word-chip">', unsafe_allow_html=True)
-                label = w
-                if st.button(label, key=f"sel_{w}"):
-                    st.session_state.clicked_word = w
-                    st.rerun()
-                st.markdown('</div>', unsafe_allow_html=True)
-else:
-    st.caption("아직 클릭해서 누적된 단어가 없습니다.")
-
-# 2) lemma / 한국어 뜻(1~2개) 2열 표 + CSV 다운로드
-st.markdown("### 📊 lemma / 한국어 뜻 요약 표")
-
 word_info = st.session_state.word_info
-if word_info:
-    rows = []
-    for lemma, info in word_info.items():
-        meanings = info.get("ko_meanings", [])
-        short_kr = "; ".join(meanings[:2])  # 한두 개만
-        rows.append({"lemma": lemma, "한국어 뜻": short_kr})
 
-    df = pd.DataFrame(rows)
-    st.dataframe(df, hide_index=True)
-
-    csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
-    st.download_button(
-        label="💾 CSV로 저장하기",
-        data=csv_bytes,
-        file_name="russian_words.csv",
-        mime="text/csv",
-    )
+if not selected and not word_info:
+    st.caption("아직 클릭해서 누적된 단어가 없습니다. 위 텍스트에서 단어를 클릭해보세요.")
 else:
-    st.caption("아직 lemma/뜻 정보가 누적되지 않았습니다. 단어를 클릭해서 정보를 가져오세요.")
+    # 1) 칩 형태로 선택 단어들
+    if selected:
+        cols = st.columns(min(4, len(selected)))
+        for idx, w in enumerate(selected):
+            col = cols[idx % len(cols)]
+            with col:
+                if w == cw:
+                    st.markdown('<div class="selected-word-chip-active">', unsafe_allow_html=True)
+                    label = f"✅ {w}"
+                    if st.button(label, key=f"sel_{w}_active"):
+                        st.session_state.clicked_word = w
+                        st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    st.markdown('<div class="selected-word-chip">', unsafe_allow_html=True)
+                    label = w
+                    if st.button(label, key=f"sel_{w}"):
+                        st.session_state.clicked_word = w
+                        st.rerun()
+                    st.markdown('</div>', unsafe_allow_html=True)
+
+    # 2) lemma / 한국어 뜻 요약 표 + CSV (같은 섹션 안에 통합)
+    if word_info:
+        rows = []
+        for lemma, info in word_info.items():
+            meanings = info.get("ko_meanings", [])
+            short_kr = "; ".join(meanings[:2])  # 한두 개만
+            rows.append({"lemma": lemma, "한국어 뜻": short_kr})
+
+        df = pd.DataFrame(rows)
+        st.dataframe(df, hide_index=True)
+
+        csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
+        st.download_button(
+            label="💾 CSV로 저장하기",
+            data=csv_bytes,
+            file_name="russian_words.csv",
+            mime="text/csv",
+        )
 
 
 # ─────────────────────────────

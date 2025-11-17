@@ -1,5 +1,5 @@
 streamlit
 pymystem3
-google-genai
 pandas
 google-generativeai>=0.4.0
+

@@ -177,7 +177,7 @@ with left:
                 font_weight = "400"
             href = f"?w={urllib.parse.quote_plus(word)}"
             html_parts.append(
-                f'<a href="{href}" style="color:{color}; font-weight:{font_weight}; text-decoration:none;">'
+                f'<a href="{href}" target="_self" style="color:{color}; font-weight:{font_weight}; text-decoration:none;">'
                 f'{html.escape(word)}</a>'
             )
         else:

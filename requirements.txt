@@ -3,4 +3,5 @@ pymystem3
 googletrans==4.0.0-rc1
 requests
 lxml
+google-genai
 beautifulsoup4

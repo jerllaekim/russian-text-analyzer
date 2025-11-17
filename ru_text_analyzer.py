@@ -7,7 +7,6 @@ import pandas as pd
 import streamlit as st
 from pymystem3 import Mystem
 # google-genai 패키지가 설치되어 있어야 합니다.
-# pip install google-generativeai
 try:
     import google.generativeai as genai
 except ImportError:
@@ -27,7 +26,6 @@ if "selected_words" not in st.session_state:
     st.session_state.selected_words = []          # 사용자가 선택한 단어(표면형) 리스트
 if "word_info" not in st.session_state:
     # lemma 기준으로 뜻을 누적 저장
-    # 예: {"человек": {"lemma": "человек", "ko_meanings": ["사람", "인간"]}, ...}
     st.session_state.word_info = {}
 
 
@@ -58,7 +56,6 @@ div.selected-word-chip-active > button {
 # ─────────────────────────────
 # 형태소 분석기 (lemma)
 # ─────────────────────────────
-# Mystem()은 초기화에 시간이 걸릴 수 있으므로 캐시합니다.
 @st.cache_resource
 def get_mystem():
     return Mystem()
@@ -70,8 +67,39 @@ def lemmatize_ru(word: str) -> str:
     lemmas = mystem.lemmatize(word)
     return (lemmas[0] if lemmas else word).strip()
 
-# Gemini API 호출 함수 (st.cache_data 사용)
-@st.cache_data(show_spinner=False)
+
+# ─────────────────────────────
+# Gemini API 설정 (⭐️ 빠진 부분 복구 ⭐️)
+# ─────────────────────────────
+# Streamlit Secrets에서 API 키를 가져옵니다.
+api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
+
+if not api_key:
+    st.error("GEMINI_API_KEY가 설정되어 있지 않습니다. Streamlit Secrets에 GEMINI_API_KEY를 넣어주세요.")
+    st.stop()
+
+# 클라이언트 초기화
+try:
+    # ⭐️ [수정] 404 오류를 피하기 위해 가장 안정적인 gemini-pro 모델로 변경
+    client = genai.GenerativeModel(model_name="gemini-pro")
+    genai.configure(api_key=api_key)
+except Exception as e:
+    st.error(f"Gemini 클라이언트 초기화 실패: {e}")
+    st.stop()
+
+# ⭐️ [수정] 빠져있던 SYSTEM_INSTRUCTION 변수 정의
+SYSTEM_INSTRUCTION = """
+너는 러시아어-한국어 학습을 돕는 도우미이다.
+러시아어 단어에 대해 간단한 한국어 뜻과 예문을 제공한다.
+반드시 유효한 JSON만 출력해야 한다.
+"""
+
+
+# ─────────────────────────────
+# API 호출 함수 (⭐️ 중복 제거 ⭐️)
+# ─────────────────────────────
+
+# ⭐️ 'build_prompt' 함수 (중복 제거, 단 하나만 존재)
 def build_prompt(word: str, lemma: str) -> str:
     return f"""
 {SYSTEM_INSTRUCTION}
@@ -102,7 +130,7 @@ def build_prompt(word: str, lemma: str) -> str:
 - 반드시 JSON만 출력하고, 그 외의 텍스트는 출력하지 마라.
 """
 
-# Gemini API 호출 함수 (st.cache_data 사용) - (⭐️ 오류 처리 강화 ⭐️)
+# Gemini API 호출 함수 (st.cache_data 사용)
 @st.cache_data(show_spinner=False)
 def fetch_from_gemini(word: str, lemma: str):
     try:
@@ -130,14 +158,14 @@ def fetch_from_gemini(word: str, lemma: str):
         st.error(f"Gemini API 호출 중 심각한 오류 발생:\n{e}")
         return {}
 
+
 # ─────────────────────────────
 # URL 쿼리 파라미터 기반 클릭 처리 (⭐️ 수정됨 ⭐️)
 # ─────────────────────────────
 params = st.query_params
 clicked_from_url = None
 if "w" in params:
-    # [수정] .get() 또는 직접 접근을 사용하여 전체 문자열을 가져옵니다.
-    # params["w"][0] (X) -> params["w"] (O)
+    # [수정] params["w"][0] (X) -> params["w"] (O)
     clicked_from_url = params["w"]
 
 
@@ -157,11 +185,9 @@ with left:
     st.caption("단어를 클릭하면 오른쪽에 기본형, 뜻, 예문이 표시되고, 아래 ‘선택한 단어 모음’에 누적됩니다.")
 
     # [중요] URL에서 읽은 단어를 세션 상태에 반영
-    # 이 로직은 스크립트가 다시 실행될 때 가장 먼저 처리됩니다.
     if clicked_from_url:
         st.session_state.clicked_word = clicked_from_url
         if clicked_from_url not in st.session_state.selected_words:
-            # selected_words는 세션에 저장되므로 누적됩니다.
             st.session_state.selected_words.append(clicked_from_url)
 
     # 텍스트를 word / non-word 단위로 split
@@ -183,7 +209,6 @@ with left:
             href = f"?w={urllib.parse.quote_plus(word)}"
             
             # [수정] target="_self" 를 추가하여 새 탭이 아닌 현재 탭에서 열리도록 강제
-            # 이것이 없으면 새 탭이 열리고 세션이 초기화됩니다.
             html_parts.append(
                 f'<a href="{href}" target="_self" style="color:{color}; font-weight:{font_weight}; text-decoration:none;">'
                 f'{html.escape(word)}</a>'
@@ -282,15 +307,12 @@ else:
     for idx, w in enumerate(selected):
         col = cols[idx % len(cols)]
         with col:
-            # 현재 클릭된 단어(cw)와 칩의 단어(w)가 같으면 활성(active) 스타일
             is_active = (w == cw)
             chip_class = "selected-word-chip-active" if is_active else "selected-word-chip"
             label = f"✅ {w}" if is_active else w
             
             st.markdown(f'<div class="{chip_class}">', unsafe_allow_html=True)
             if st.button(label, key=f"sel_chip_{w}"):
-                # 칩을 클릭하면 해당 단어를 '현재 클릭된 단어'로 설정하고
-                # 쿼리 파라미터를 업데이트한 뒤 새로고침(rerun)
                 st.query_params["w"] = w
                 st.rerun()
             st.markdown('</div>', unsafe_allow_html=True)
@@ -298,11 +320,9 @@ else:
     # 2) lemma / 한국어 뜻 요약 표 + CSV (word_info 기준)
     if word_info:
         rows = []
-        # 누적된 selected_words 순서대로 word_info에서 정보 찾기
-        # (중복 lemma 제거를 위해 set 사용)
         added_lemmas = set()
         
-        # 먼저 현재 클릭된 단어의 lemma를 맨 위에 추가 (있다면)
+        # 현재 클릭된 단어의 lemma를 맨 위에 추가 (있다면)
         if cw:
             current_lemma = lemmatize_ru(cw)
             if current_lemma in word_info and current_lemma not in added_lemmas:
@@ -318,7 +338,7 @@ else:
             if lemma in word_info and lemma not in added_lemmas:
                 info = word_info[lemma]
                 meanings = info.get("ko_meanings", [])
-                short_kr = "; ".join(meanings[:2])  # 한두 개만
+                short_kr = "; ".join(meanings[:2])
                 rows.append({"lemma": lemma, "한국어 뜻": short_kr})
                 added_lemmas.add(lemma)
 

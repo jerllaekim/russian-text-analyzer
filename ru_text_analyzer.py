@@ -83,7 +83,8 @@ if not api_key:
 
 # 클라이언트 초기화
 try:
-    client = genai.GenerativeModel(model_name="gemini-1.5-flash-latest") # ✅ 이렇게 수정
+    # ⭐️ [최종 수정] 404 오류를 피하기 위해 가장 안정적인 gemini-pro 모델로 변경
+    client = genai.GenerativeModel(model_name="gemini-pro")
     genai.configure(api_key=api_key)
 except Exception as e:
     st.error(f"Gemini 클라이언트 초기화 실패: {e}")

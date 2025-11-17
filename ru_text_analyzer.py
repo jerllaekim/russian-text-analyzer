@@ -1,8 +1,6 @@
 import os
 import re
 import json
-import html
-import urllib.parse
 
 import pandas as pd
 import streamlit as st
@@ -26,23 +24,41 @@ if "word_info" not in st.session_state:
     st.session_state.word_info = {}
 
 
-# 선택 단어 칩용 CSS
+# 버튼을 텍스트처럼 보이게 하는 CSS (네모 버튼 느낌 최소화)
 st.markdown(
     """
 <style>
+/* 일반 단어 버튼: 검은 글씨, 배경/테두리 제거, 마진 최소화 */
+div.word-button > button {
+    border: none;
+    background: none;
+    padding: 0 4px 2px 0;
+    margin: 0;
+    color: #000000;
+    font-size: 1rem;
+}
+div.word-button > button:hover {
+    text-decoration: underline;
+}
+
+/* 선택 단어 칩 */
 div.selected-word-chip > button {
     border-radius: 999px;
     padding: 2px 10px;
     margin: 3px;
     border: 1px solid #1E88E5;
     background-color: rgba(30, 136, 229, 0.06);
+    color: #1E88E5;
 }
+
+/* 현재 선택된 단어 칩(✅) */
 div.selected-word-chip-active > button {
     border-radius: 999px;
     padding: 2px 10px;
     margin: 3px;
     border: 1px solid #1E88E5;
     background-color: rgba(30, 136, 229, 0.18);
+    color: #1E88E5;
 }
 </style>
 """,
@@ -130,72 +146,47 @@ def fetch_from_gemini(word: str, lemma: str):
 
 
 # ─────────────────────────────
-# URL 쿼리 파라미터 기반 클릭 처리
-# ─────────────────────────────
-params = st.query_params
-clicked_from_url = None
-
-# 🔧 여기서 한 글자만 들어가는 버그를 고침:
-# 예전 코드: params["w"][0]  → 'человек'에서 'ч'만 가져옴
-# 지금은 전체 문자열을 그대로 사용
-if "w" in params and params["w"]:
-    clicked_from_url = params["w"]
-
-
-# ─────────────────────────────
 # 텍스트 입력
 # ─────────────────────────────
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка.")
+
+# 단어 / 문장부호 분리
+tokens = re.findall(r"\w+|[^\w\s]", text, flags=re.UNICODE)
 
 left, right = st.columns([2, 1], gap="large")
 
 
 # ─────────────────────────────
-# 왼쪽 영역 — 원문 텍스트 (인라인 하이퍼링크)
+# 왼쪽 영역 — 텍스트 (버튼 그리드, 세션 유지)
 # ─────────────────────────────
 with left:
     st.subheader("텍스트 분석 결과")
-    st.caption("단어를 클릭하면 오른쪽에 기본형, 뜻, 예문이 표시되고, 아래 ‘선택한 단어 모음’에 누적됩니다.")
+    st.caption("단어(검은 글씨)를 클릭하면 오른쪽에 기본형, 뜻, 예문이 표시되고, 아래 ‘선택한 단어 모음’에 누적됩니다.")
 
-    # 링크 클릭으로 전달된 단어를 상태에 반영 + 누적
-    if clicked_from_url:
-        st.session_state.clicked_word = clicked_from_url
-        if clicked_from_url not in st.session_state.selected_words:
-            st.session_state.selected_words.append(clicked_from_url)
-
-    # 텍스트를 word / non-word 단위로 split
-    segments = re.split(r'(\w+)', text, flags=re.UNICODE)
-
-    html_parts = []
-    for seg in segments:
-        if not seg:
-            continue
-        if re.fullmatch(r'\w+', seg, flags=re.UNICODE):
-            word = seg
-            # 처음에는 모두 검정, 한 번이라도 선택된 단어만 파란색
-            if word in st.session_state.selected_words:
-                color = "#1E88E5"   # 파란색
-                font_weight = "600"
-            else:
-                color = "#000000"   # 검정
-                font_weight = "400"
-            href = f"?w={urllib.parse.quote_plus(word)}"
-            html_parts.append(
-                f'<a href="{href}" style="color:{color}; font-weight:{font_weight}; text-decoration:none;">'
-                f'{html.escape(word)}</a>'
-            )
-        else:
-            html_parts.append(html.escape(seg))
-
-    html_text = "".join(html_parts)
-    st.markdown(html_text, unsafe_allow_html=True)
+    # 버튼을 여러 열로 배치해 세로 줄 느낌 줄이기
+    row_size = 10  # 한 줄에 최대 몇 개씩
+    for start in range(0, len(tokens), row_size):
+        row_tokens = tokens[start:start + row_size]
+        cols = st.columns(len(row_tokens))
+        for i, (col, tok) in enumerate(zip(cols, row_tokens)):
+            with col:
+                if re.match(r"\w+", tok, flags=re.UNICODE):
+                    # 단어 버튼 (검은 글씨, CSS로 텍스트 느낌)
+                    st.markdown('<div class="word-button">', unsafe_allow_html=True)
+                    if st.button(tok, key=f"tok_{start}_{i}"):
+                        st.session_state.clicked_word = tok
+                        if tok not in st.session_state.selected_words:
+                            st.session_state.selected_words.append(tok)
+                    st.markdown('</div>', unsafe_allow_html=True)
+                else:
+                    # 문장부호 / 공백 등은 그대로 출력
+                    st.write(tok)
 
     with st.expander("초기화"):
         if st.button("🔄 선택 & 누적 데이터 초기화"):
             st.session_state.clicked_word = None
             st.session_state.selected_words = []
             st.session_state.word_info = {}
-            st.query_params.clear()
             st.rerun()
 
 

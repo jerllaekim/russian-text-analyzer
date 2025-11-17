@@ -1,4 +1,3 @@
-st.cache_data.clear()
 import os
 import re
 import json
@@ -26,12 +25,12 @@ if "word_info" not in st.session_state:
 
 
 # ─────────────────────────────
-# CSS: 단어 버튼은 텍스트처럼, 칩/다른 버튼은 별도
+# CSS: 단어 버튼은 텍스트처럼, 선택되면 파란색
 # ─────────────────────────────
 st.markdown(
     """
 <style>
-/* ✅ 단어용 버튼: 텍스트처럼 보이게 */
+/* 단어용 버튼: 텍스트처럼 보이게 */
 div.word-btn-normal > button,
 div.word-btn-selected > button {
     border: none;
@@ -59,7 +58,7 @@ div.word-btn-selected > button:hover {
     text-decoration: underline;
 }
 
-/* 🔹 선택 단어 칩 */
+/* 선택 단어 칩 */
 div.selected-word-chip > button {
     border-radius: 999px;
     padding: 2px 10px;
@@ -69,7 +68,7 @@ div.selected-word-chip > button {
     color: #1E88E5;
 }
 
-/* 🔹 현재 선택된 단어 칩(✅) */
+/* 현재 선택된 단어 칩(✅) */
 div.selected-word-chip-active > button {
     border-radius: 999px;
     padding: 2px 10px;
@@ -182,7 +181,7 @@ with left:
     st.caption("단어(검은 글씨)를 클릭하면 오른쪽에 기본형, 뜻, 예문이 표시되고, 아래 ‘선택한 단어 모음’에 누적됩니다.")
 
     # 버튼을 여러 열로 배치해서 세로 줄 느낌 줄이기
-    row_size = 12  # 한 줄에 최대 몇 개씩 (원하면 숫자 더 키우면 됨)
+    row_size = 16  # 한 줄에 최대 몇 개씩 (간격 줄이고 싶으면 숫자 키워도 됨)
     for start in range(0, len(tokens), row_size):
         row_tokens = tokens[start:start + row_size]
         cols = st.columns(len(row_tokens))
@@ -192,7 +191,7 @@ with left:
                     # 이미 선택된 단어면 파란색 / 아니면 검은색
                     cls = "word-btn-selected" if tok in st.session_state.selected_words else "word-btn-normal"
                     st.markdown(f'<div class="{cls}">', unsafe_allow_html=True)
-                    if st.button(tok, key=f"tok_{start}_{i}"):
+                    if st.button(tok, key=f"tok_{start}_{i}_{tok}"):
                         st.session_state.clicked_word = tok
                         if tok not in st.session_state.selected_words:
                             st.session_state.selected_words.append(tok)

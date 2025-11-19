@@ -1,95 +1,78 @@
 import streamlit as st
 import re
-import os
-import json
-from pymystem3 import Mystem
-from google import genai
-import pandas as pd
 
-# 초기 상태
+# 상태 초기화
 if "selected_words" not in st.session_state:
     st.session_state.selected_words = []
 if "clicked_word" not in st.session_state:
     st.session_state.clicked_word = None
-if "word_info" not in st.session_state:
-    st.session_state.word_info = {}
 
 st.set_page_config(layout="wide")
 st.title("러시아어 텍스트 분석기")
 
 
-# ----- CSS: span 클릭 스타일 -----
+# --- CSS ---
 st.markdown("""
 <style>
-.word-span {
-    font-size: 0.95rem;
+.word {
+    display: inline-block;
     margin-right: 6px;
+    font-size: 0.95rem;
     cursor: pointer;
     color: #333;
 }
 
-.word-span:hover {
+.word:hover {
     text-decoration: underline;
 }
 
-.word-selected {
-    color: #1E88E5 !important;
-    text-decoration: underline !important;
+.word.selected {
+    color: #1E88E5;
+    text-decoration: underline;
 }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ----- 텍스트 입력 -----
+# --- JS + HTML 클릭 이벤트 처리 ---
+click_js = """
+<script>
+function selectWord(word) {
+    window.parent.postMessage({type: 'word_click', word: word}, "*");
+}
+</script>
+"""
+
+st.markdown(click_js, unsafe_allow_html=True)
+
+
+
+# --- 메시지 리스너 ---
+# Streamlit >= 1.32 에서 작동하는 방법
+msg = st.experimental_get_query_params().get("word_click_signal", None)
+if msg:
+    w = msg[0]
+    if w not in st.session_state.selected_words:
+        st.session_state.selected_words.append(w)
+    st.session_state.clicked_word = w
+
+
+# --- 텍스트 입력 ---
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка.")
-
 tokens = re.findall(r"\w+", text, flags=re.UNICODE)
-unique_tokens = list(dict.fromkeys(tokens))  # 순서 유지
+tokens = list(dict.fromkeys(tokens))
 
 
-left, right = st.columns([2, 1])
+# --- 단어 목록 렌더링 (HTML로 직접) ---
+html_words = ""
+for tok in tokens:
+    cls = "word"
+    if tok in st.session_state.selected_words:
+        cls = "word selected"
+    html_words += f'<span class="{cls}" onclick="selectWord(\'{tok}\')">{tok}</span> '
 
+# Streamlit rerun 유도용 hidden param
+st.experimental_set_query_params(word_click_signal=st.session_state.clicked_word or "")
 
-# ----- 왼쪽: 단어 목록 -----
-with left:
-    st.subheader("단어 목록 (텍스트에서 추출)")
-
-    for tok in unique_tokens:
-
-        # 이미 선택된 단어는 파란색 스타일
-        css_class = "word-span"
-        if tok in st.session_state.selected_words:
-            css_class = "word-span word-selected"
-
-        # span 클릭 → hidden button 클릭 유도
-        html = f"""
-        <span class="{css_class}" onclick="document.getElementById('btn_{tok}').click();">
-            {tok}
-        </span>
-        """
-        st.markdown(html, unsafe_allow_html=True)
-
-        # 진짜 동작하는 것은 이 숨겨진 버튼
-        if st.button("", key=f"btn_{tok}", help="", args=(tok,), kwargs=None):
-            st.session_state.clicked_word = tok
-            if tok not in st.session_state.selected_words:
-                st.session_state.selected_words.append(tok)
-
-    st.write("")
-
-    if st.button("🔄 초기화"):
-        st.session_state.selected_words = []
-        st.session_state.clicked_word = None
-        st.session_state.word_info = {}
-        st.rerun()
-
-
-# ----- 오른쪽: 단어 정보 -----
-with right:
-    st.subheader("📚 단어 정보")
-
-    cw = st.session_state.clicked_word
-    if cw:
-        st.write(f"**선택된 단어:** {cw}")
-    else:
-        st.info("왼쪽 단어를 클릭하세요.")
+st.markdown("### 단어 목록 (텍스트에서 추출)")
+st.markdown(html_words, unsafe_allow_html=True)

@@ -24,47 +24,48 @@ if "word_info" not in st.session_state:
 
 # ─────────────────────────────
 # CSS
-#  - st.radio 를 텍스트처럼 보이게
-#  - 선택된 단어만 파란색 + 밑줄
+#  - 체크박스를 텍스트처럼 보이게
+#  - 선택된 단어(체크된 것)만 파란색 + 밑줄
 # ─────────────────────────────
 st.markdown(
     """
 <style>
-/* 라디오 전체를 가로로 나열 */
-.stRadio > div[role="radiogroup"] {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px 8px;
+/* 단어 목록 체크박스를 가로로 나열 */
+.stCheckbox {
+    display: inline-block;
+    margin: 0 6px 4px 0;
 }
 
-/* 개별 옵션 레이블 */
-.stRadio label {
+/* 라벨 전체를 인라인 플렉스로 */
+.stCheckbox > label {
     display: inline-flex;
     align-items: center;
-    margin: 0;
-}
-
-/* 진짜 라디오 버튼(동그라미)은 숨기기 */
-.stRadio input[type="radio"] {
-    display: none;
-}
-
-/* 텍스트 부분 기본 스타일 */
-.stRadio label > div {
-    color: #333333;
-    font-size: 0.95rem;
-    line-height: 1.6;
     cursor: pointer;
 }
 
-/* 선택된 라디오의 텍스트만 파란색 + 밑줄
-   (Streamlit 구조: input + div(텍스트) 라는 가정 하에) */
-.stRadio input[type="radio"]:checked + div {
+/* 실제 체크박스(네모)는 안 보이게 */
+.stCheckbox input[type="checkbox"] {
+    position: absolute;
+    opacity: 0;
+    pointer-events: none;
+}
+
+/* 기본 단어 텍스트 스타일 */
+.stCheckbox span {
+    color: #333333;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
+
+/* 선택된(체크된) 단어만 파란색 + 밑줄
+   Streamlit 체크박스는 내부에 role="checkbox" 가진 요소가 있어서
+   그게 aria-checked="true"일 때 텍스트를 파란색으로 바꾼다. */
+.stCheckbox [role="checkbox"][aria-checked="true"] + span {
     color: #1E88E5;
     text-decoration: underline;
 }
 
-/* 아래 선택한 단어 모음 칩 (기존 느낌 유지) */
+/* 하단 선택 단어 모음 칩 */
 .selected-chip button {
     border-radius: 999px !important;
     padding: 2px 10px !important;
@@ -174,37 +175,51 @@ left, right = st.columns([2, 1], gap="large")
 
 
 # ─────────────────────────────
-# 왼쪽: 단어 목록 (가로 나열, 현재 클릭된 단어만 파란색)
+# 왼쪽: 단어 목록
+#   - 체크박스로 멀티 선택
+#   - 체크된 단어는 파란색 + 밑줄 (CSS)
+#   - 체크박스는 눈에 안 보임
 # ─────────────────────────────
 with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
-    st.caption("단어를 클릭하면 오른쪽에 정보가 표시되고, 하단에 누적됩니다.")
+    st.caption("단어를 클릭하면 파란색으로 바뀌고, 오른쪽에 정보가 표시되며, 하단에 누적됩니다.")
+
+    old_selected = list(st.session_state.selected_words)
 
     if not unique_tokens:
         st.info("텍스트에서 단어를 찾지 못했습니다.")
-        selected_word = None
     else:
-        # 현재 클릭된 단어가 있으면 그걸 기본 선택으로
-        if st.session_state.clicked_word in unique_tokens:
-            default_index = unique_tokens.index(st.session_state.clicked_word)
+        # 체크박스 값들 읽기
+        checkbox_values = {}
+        for tok in unique_tokens:
+            key = f"chk_{tok}"
+            # 이전 선택 상태를 기본값으로 사용
+            default_val = tok in old_selected
+            val = st.checkbox(tok, key=key, value=default_val)
+            checkbox_values[tok] = val
+
+        # 새 선택 목록
+        new_selected = [tok for tok, v in checkbox_values.items() if v]
+
+        # 어떤 단어가 새로 선택되었는지 확인
+        added = [tok for tok in new_selected if tok not in old_selected]
+        removed = [tok for tok in old_selected if tok not in new_selected]
+
+        # clicked_word 업데이트 로직
+        if added:
+            # 방금 새로 클릭한 단어를 현재 선택 단어로
+            st.session_state.clicked_word = added[-1]
         else:
-            default_index = 0
+            # 새로 추가된 건 없지만, 기존 클릭 단어가 해제되었으면 마지막 선택 단어로 이동
+            cw = st.session_state.clicked_word
+            if cw and cw not in new_selected:
+                if new_selected:
+                    st.session_state.clicked_word = new_selected[-1]
+                else:
+                    st.session_state.clicked_word = None
 
-        # horizontal=True → 가로로 쭉 / CSS로 라디오 모양 제거
-        selected_word = st.radio(
-            "단어 선택",
-            options=unique_tokens,
-            index=default_index,
-            horizontal=True,
-            label_visibility="collapsed",
-            key="word_radio",
-        )
-
-    # radio 선택 결과를 상태에 반영
-    if selected_word:
-        st.session_state.clicked_word = selected_word
-        if selected_word not in st.session_state.selected_words:
-            st.session_state.selected_words.append(selected_word)
+        # 선택 목록 갱신
+        st.session_state.selected_words = new_selected
 
     with st.expander("초기화"):
         if st.button("🔄 선택 & 누적 데이터 초기화", key="reset_all"):
@@ -266,7 +281,7 @@ with right:
         rnc_url = f"https://ruscorpora.ru/search?search={lemma_for_link}"
         st.markdown(f"[Multitran에서 검색]({mt_url})  \n[러시아 국립 코퍼스에서 검색]({rnc_url})")
     else:
-        st.info("왼쪽 단어 목록에서 하나를 클릭하면 여기 정보가 나타납니다.")
+        st.info("왼쪽에서 단어를 하나 이상 선택하면 여기 정보가 나타납니다.")
 
 
 # ─────────────────────────────

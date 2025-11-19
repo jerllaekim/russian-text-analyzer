@@ -184,7 +184,7 @@ st.subheader("📝 선택한 단어 모음")
 selected = st.session_state.selected_words
 word_info = st.session_state.word_info
 
-# ---- 클릭한 단어 리스트 (JSON 대신 깔끔한 가로 span) ----
+# ---- 클릭한 단어 리스트 (가로 span) ----
 if selected:
     st.markdown("**클릭한 단어들:**")
 

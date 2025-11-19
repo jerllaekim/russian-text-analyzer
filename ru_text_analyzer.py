@@ -21,63 +21,58 @@ if "selected_words" not in st.session_state:
 if "word_info" not in st.session_state:
     st.session_state.word_info = {}              # lemma -> {lemma, ko_meanings}
 
+# URL 쿼리에서 클릭된 단어 읽기 (?word=...)
+qp = st.experimental_get_query_params()
+clicked_from_url = qp.get("word", [None])[0] if "word" in qp else None
+if clicked_from_url:
+    st.session_state.clicked_word = clicked_from_url
+    if clicked_from_url not in st.session_state.selected_words:
+        st.session_state.selected_words.append(clicked_from_url)
+
 
 # ─────────────────────────────
-# CSS: 단어 목록을 텍스트처럼, 선택 시 파란색/밑줄
+# CSS
 # ─────────────────────────────
 st.markdown(
     """
 <style>
-/* 단어 목록용 래퍼: 인라인으로 나열 */
-.word-chip, .word-chip-selected {
-    display: inline-block;
+/* 단어 목록: a 태그로 가로로 나열 */
+.word-link {
+    color: #333333;
+    text-decoration: none;
+    margin-right: 6px;
+    font-size: 0.95rem;
+    line-height: 1.6;
 }
-
-/* 기본 단어: 버튼이지만 텍스트처럼 보이게 */
-.word-chip button {
-    border: none !important;
-    background: transparent !important;
-    padding: 0 4px !important;          /* 단어 간 간격 */
-    margin: 0 0 4px 0 !important;
-    color: #333333 !important;
-    font-size: 0.95rem !important;
-    line-height: 1.4 !important;
-    cursor: pointer !important;
-}
-
-/* 선택된 단어: 파란색 + 밑줄 느낌 */
-.word-chip-selected button {
-    border: none !important;
-    background: transparent !important;
-    padding: 0 4px !important;
-    margin: 0 0 4px 0 !important;
-    color: #1E88E5 !important;
-    font-size: 0.95rem !important;
-    line-height: 1.4 !important;
-    cursor: pointer !important;
+.word-link:hover {
     text-decoration: underline;
 }
+.word-link-selected {
+    color: #1E88E5;
+    text-decoration: underline;
+    margin-right: 6px;
+    font-size: 0.95rem;
+    line-height: 1.6;
+}
 
-/* 하단 선택 단어 배너용 칩 */
-.selected-chip, .selected-chip-active {
-    display: inline-block;
-}
-.selected-chip button,
-.selected-chip-active button {
-    border: none !important;
-    background: transparent !important;
-    padding: 2px 6px !important;
-    margin: 0 4px 4px 0 !important;
-    font-size: 0.95rem !important;
-    cursor: pointer !important;
-}
+/* 선택한 단어 모음 칩 (기존 스타일 유지) */
 .selected-chip button {
+    border-radius: 999px !important;
+    padding: 2px 10px !important;
+    margin: 3px !important;
+    border: 1px solid #1E88E5 !important;
+    background-color: rgba(30, 136, 229, 0.06) !important;
     color: #1E88E5 !important;
+    font-size: 0.9rem !important;
 }
 .selected-chip-active button {
-    color: #ffffff !important;
-    background: #1E88E5 !important;
     border-radius: 999px !important;
+    padding: 2px 10px !important;
+    margin: 3px !important;
+    border: 1px solid #1E88E5 !important;
+    background-color: rgba(30, 136, 229, 0.18) !important;
+    color: #1E88E5 !important;
+    font-size: 0.9rem !important;
 }
 </style>
 """,
@@ -170,32 +165,31 @@ left, right = st.columns([2, 1], gap="large")
 
 
 # ─────────────────────────────
-# 왼쪽: 단어 목록 (텍스트처럼 가로로 나열)
+# 왼쪽: 단어 목록 (텍스트처럼 가로로 나열 + 선택 시 파란색)
 # ─────────────────────────────
 with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
-    st.caption("아래 단어를 클릭하면 오른쪽에 정보가 표시되고, 하단에 누적됩니다.")
+    st.caption("단어를 클릭하면 오른쪽에 정보가 표시되고, 하단에 누적됩니다.")
 
     if not unique_tokens:
         st.info("텍스트에서 단어를 찾지 못했습니다.")
     else:
-        # 문장처럼 가로로 쭉 나열
-        for idx, tok in enumerate(unique_tokens):
+        links = []
+        for tok in unique_tokens:
             is_selected = tok in st.session_state.selected_words
-            cls = "word-chip-selected" if is_selected else "word-chip"
-            st.markdown(f"<span class='{cls}'>", unsafe_allow_html=True)
-            if st.button(tok, key=f"wordchip_{idx}_{tok}"):
-                st.session_state.clicked_word = tok
-                if tok not in st.session_state.selected_words:
-                    st.session_state.selected_words.append(tok)
-            st.markdown("</span>", unsafe_allow_html=True)
-        st.write("")  # 줄바꿈
+            cls = "word-link-selected" if is_selected else "word-link"
+            # ?word=단어 로 이동하면서, 선택된 단어는 파란색/밑줄
+            links.append(f'<a class="{cls}" href="?word={tok}">{tok}</a>')
+        # 한 줄(또는 여러 줄)로 쭉 나열 → 일반 텍스트처럼 보임
+        st.markdown(" ".join(links), unsafe_allow_html=True)
 
     with st.expander("초기화"):
-        if st.button("🔄 선택 & 누적 데이터 초기화", key="reset_all"):
+        if st.button("🔄 선택 & 누적 데이터 초기화"):
             st.session_state.clicked_word = None
             st.session_state.selected_words = []
             st.session_state.word_info = {}
+            # URL 쿼리도 초기화
+            st.experimental_set_query_params()
             st.rerun()
 
 
@@ -268,77 +262,9 @@ if not selected and not word_info:
     st.caption("아직 클릭해서 누적된 단어가 없습니다. 위 단어 목록에서 단어를 선택해보세요.")
 else:
     if selected:
-        st.caption("아래 파란 단어를 클릭하면 다시 상세 정보를 볼 수 있습니다.")
-
-        for w in selected:
-            if w == cw:
-                cls = "selected-chip-active"
-            else:
-                cls = "selected-chip"
-            st.markdown(f"<span class='{cls}'>", unsafe_allow_html=True)
-            if st.button(w, key=f"selectedchip_{w}"):
-                st.session_state.clicked_word = w
-                st.rerun()
-            st.markdown("</span>", unsafe_allow_html=True)
-        st.write("")
-
-    if word_info:
-        rows = []
-        for lemma, info in word_info.items():
-            meanings = info.get("ko_meanings", [])
-            short_kr = "; ".join(meanings[:2])
-            rows.append({"lemma": lemma, "한국어 뜻": short_kr})
-        df = pd.DataFrame(rows)
-        st.dataframe(df, hide_index=True)
-
-        csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
-        st.download_button(
-            label="💾 CSV로 저장하기",
-            data=csv_bytes,
-            file_name="russian_words.csv",
-            mime="text/csv",
-        )
-
-
-# ─────────────────────────────
-# 맨 아래: 직접 단어 검색
-# ─────────────────────────────
-st.divider()
-st.subheader("🔍 직접 단어 검색")
-
-manual = st.text_input("텍스트와 상관없이, 직접 단어를 입력해 분석할 수도 있습니다.", "")
-
-if manual:
-    lemma = lemmatize_ru(manual)
-    st.markdown(f"**입력 단어:** {manual}")
-    st.markdown(f"**기본형(lemma):** *{lemma}*")
-
-    try:
-        info = fetch_from_gemini(manual, lemma)
-        ko_meanings = info.get("ko_meanings", [])
-        examples = info.get("examples", [])
-    except Exception as e:
-        st.error(f"Gemini API 호출 중 오류가 발생했습니다: {e}")
-        ko_meanings = []
-        examples = []
-
-    if ko_meanings:
-        st.session_state.word_info[lemma] = {
-            "lemma": lemma,
-            "ko_meanings": ko_meanings,
-        }
-
-    if ko_meanings:
-        st.markdown("**한국어 뜻:**")
-        for m in ko_meanings:
-            st.markdown(f"- {m}")
-
-    if examples:
-        st.markdown("### 📖 예문")
-        for ex in examples:
-            ru = ex.get("ru", "")
-            ko = ex.get("ko", "")
-            if ru:
-                st.markdown(f"- **{ru}**")
-            if ko:
-                st.markdown(f" → {ko}")
+        st.caption("클릭하면 다시 상세 정보를 볼 수 있습니다.")
+        cols = st.columns(min(4, len(selected)))
+        for idx, w in enumerate(selected):
+            col = cols[idx % len(cols)]
+            with col:
+                i

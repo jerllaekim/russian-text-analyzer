@@ -101,105 +101,116 @@ text = st.text_area("텍스트를 입력하세요", "Человек идёт п�
 tokens = list(dict.fromkeys(re.findall(r"\w+", text, flags=re.UNICODE)))
 
 left, right = st.columns([2, 1])
+# ----------------------------------------
+# 1. 단어 목록 (화면에 보이는 영역)
+# ----------------------------------------
 with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
 
-    # 1. CSS 스타일 정의 (클릭 커서 및 선택 효과)
-    css_styles = """
+    # 1-A. 단어 스타일 정의 및 버튼 숨김 CSS
+    word_styles_and_hide_css = """
     <style>
-        .word-span {
-            cursor: pointer; /* 마우스를 올렸을 때 클릭 가능한 모양으로 변경 */
-            padding: 2px 4px;
-            margin: 2px;
-            display: inline-block; /* 단어들을 한 줄에 배치 */
-            border-radius: 3px;
-            transition: background-color 0.2s;
-            user-select: none;
-            border: 1px solid transparent;
-        }
-        .word-span:hover {
-            background-color: #f0f2f6;
-            border: 1px solid #ccc;
-        }
-        .word-selected {
+        /* 1. 단어 스타일 정의: 밑줄 제거 및 깔끔한 호버 효과 */
+        .word-span, .word-selected {
             cursor: pointer;
             padding: 2px 4px;
             margin: 2px;
             display: inline-block;
             border-radius: 3px;
+            transition: background-color 0.2s;
+            user-select: none;
+            border: 1px solid transparent;
+            text-decoration: none; /* ❗밑줄 제거 */
+        }
+        .word-span:hover {
+            background-color: #f0f2f6; /* 호버 시 배경색 변경 */
+            border: 1px solid #ccc;
+        }
+        .word-selected {
             background-color: #e0f7fa;
             color: #00796b;
             border: 1px solid #00bcd4;
-            user-select: none;
+        }
+
+        /* 2. 숨겨진 버튼이 있는 컨테이너를 완벽하게 숨김 */
+        /* 이 ID는 아래 2-B 섹션에서 st.markdown으로 설정됩니다. */
+        #hidden-button-container {
+            display: none !important;
+            visibility: hidden !important;
+            width: 0 !important;
+            height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: hidden !important;
         }
     </style>
     """
-    # ⚠️ CSS 스타일을 먼저 적용합니다.
-    st.markdown(css_styles, unsafe_allow_html=True)
-
-
-    # 2. HTML 전체를 한 번에 쌓기 (단어 목록)
-    html_all = ""
-
-    # tokens 리스트가 정의되어 있어야 합니다.
-    # (예: tokens = ["Человек", "идёт", "по", "улице", "Это", "тестовая", "строка"])
+    st.markdown(word_styles_and_hide_css, unsafe_allow_html=True)
     
+    # 1-B. HTML로 단어 목록 생성
+    html_all = ""
+    # tokens 리스트가 정의되어 있다고 가정합니다.
+    # st.session_state.selected_words가 초기화되어 있다고 가정합니다.
+
     for tok in tokens:
         css = "word-span"
-        # st.session_state.selected_words도 미리 초기화되어 있어야 합니다. (예: st.session_state.selected_words = [])
         if 'selected_words' in st.session_state and tok in st.session_state.selected_words:
             css = "word-selected"
 
-        # 각 단어 span HTML 생성 - 숨겨진 버튼을 클릭합니다.
-        # ID가 btn_hidden_... 인지 확인하세요.
+        # onclick: 숨겨진 버튼의 ID(hidden-trigger-...)를 정확히 타겟팅
         html_all += f"""
-        <span class="{css}" onclick="document.getElementById('btn_hidden_{tok}').click();">
+        <span class="{css}" onclick="document.getElementById('hidden-trigger-{tok}').click();">
             {tok}
         </span>
         """
 
-    # ⚠️ HTML 콘텐츠를 출력합니다.
+    # 1-C. 단어 목록 출력
     st.markdown(html_all, unsafe_allow_html=True)
-
     
-    # 3. Streamlit 버튼을 숨기기 위한 CSS 스타일 추가
-    # 버튼 자체는 화면에 보이지 않도록 강력하게 숨깁니다.
-    hide_button_css = """
-    <style>
-        /* 버튼의 key가 'btn_hidden_'로 시작하는 요소를 숨김 */
-        /* Streamlit 1.x 버전 이상에서 안정적으로 작동하는 CSS 선택자입니다. */
-        div[data-testid*="stButton"] button[key^="btn_hidden_"] {
-            display: none !important;
-            height: 0 !important;
-            padding: 0 !important;
-            border: none !important;
-        }
-    </style>
-    """
-    st.markdown(hide_button_css, unsafe_allow_html=True)
-    
-    # 4. 숨겨진 버튼 로직
-    # 이 버튼들은 숨겨져 있지만, JS의 onclick 이벤트에 의해 클릭되어 로직을 실행합니다.
-    for tok in tokens:
-        # key가 HTML의 onclick ID와 일치해야 합니다: 'btn_hidden_' + tok
-        clicked = st.button(" ", key=f"btn_hidden_{tok}") 
-        if clicked:
-            st.session_state.clicked_word = tok
-            if tok not in st.session_state.selected_words:
-                st.session_state.selected_words.append(tok)
-            # 클릭되면 자동으로 리런(rerun)됩니다.
-
-
-    # 5. 초기화 버튼
+    # 1-D. 초기화 버튼 (이것은 보여야 함)
     st.markdown("---")
     if st.button("🔄 초기화"):
-        if 'selected_words' in st.session_state:
-            st.session_state.selected_words = []
-        if 'clicked_word' in st.session_state:
-            st.session_state.clicked_word = None
-        if 'word_info' in st.session_state:
-            st.session_state.word_info = {}
+        st.session_state.selected_words = []
+        st.session_state.clicked_word = None
+        st.session_state.word_info = {}
         st.rerun()
+
+# ----------------------------------------
+# 2. 숨겨진 버튼들 (화면에 보이지 않는 영역)
+# ----------------------------------------
+
+# 2-A. 숨겨진 버튼을 담을 컨테이너 생성 및 ID 부여
+# 이 HTML/JS 코드가 아래 st.button보다 먼저 실행되어 컨테이너를 생성합니다.
+st.markdown('<div id="hidden-button-container">', unsafe_allow_html=True)
+
+# 2-B. 숨겨진 버튼 로직
+# 이 버튼들은 2-A의 div 안에 배치되며, 1-A의 CSS로 완벽히 숨겨집니다.
+for tok in tokens:
+    # 1. Streamlit 버튼 생성 (버튼의 내용은 중요하지 않습니다.)
+    clicked = st.button(" ", key=f"key_{tok}") 
+
+    # 2. **버튼에 HTML ID 강제 부여 (가장 중요한 트릭)**
+    # st.button이 생성하는 실제 <button> 요소에 고유 ID를 부여하여
+    # 1-B의 onclick 이벤트가 정확히 이 버튼을 클릭하도록 만듭니다.
+    st.markdown(f"""
+    <script>
+        // key가 'key_{tok}'인 버튼을 찾고 ID를 부여합니다.
+        var target_button = document.querySelector('button[key="key_{tok}"]');
+        if (target_button) {{
+            target_button.id = 'hidden-trigger-{tok}';
+        }}
+    </script>
+    """, unsafe_allow_html=True)
+    
+    if clicked:
+        # 이 부분이 1-B의 <span> 클릭 시 실행되는 Python 로직입니다.
+        st.session_state.clicked_word = tok
+        if tok not in st.session_state.selected_words:
+            st.session_state.selected_words.append(tok)
+        # Rerun은 이 클릭 이벤트 후 Streamlit에 의해 자동 실행됩니다.
+
+# 2-C. 숨겨진 컨테이너 닫기
+st.markdown('</div>', unsafe_allow_html=True)
 
 # ---------------------- 오른쪽: 단어 정보 ----------------------
 with right:

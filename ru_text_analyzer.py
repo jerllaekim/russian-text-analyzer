@@ -18,13 +18,10 @@ if "clicked_word" not in st.session_state:
 if "word_info" not in st.session_state:
     st.session_state.word_info = {}
 
-# Mystem 초기화
 mystem = Mystem()
 
 @st.cache_data(show_spinner=False)
 def lemmatize_ru(word: str) -> str:
-    """단어의 기본형(lemma)을 추출합니다."""
-    # 단어만 처리합니다.
     if re.fullmatch(r'\w+', word, flags=re.UNICODE):
         lemmas = mystem.lemmatize(word)
         return (lemmas[0] if lemmas else word).strip()
@@ -33,19 +30,17 @@ def lemmatize_ru(word: str) -> str:
 # ---------------------- 1. Gemini 연동 함수 ----------------------
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
-    # st.error("GEMINI_API_KEY 환경 변수가 설정되지 않았습니다.")
     client = None
 else:
     client = genai.Client(api_key=api_key)
-
 
 SYSTEM_PROMPT = """
 너는 러시아어-한국어 학습을 돕는 도우미이다.
 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 제공한다.
 반드시 JSON만 출력한다.
 """
-
 def make_prompt(word, lemma):
+    # (프롬프트 내용은 생략 - 동일)
     return f"""
 {SYSTEM_PROMPT}
 단어: {word}
@@ -62,16 +57,11 @@ def make_prompt(word, lemma):
 
 @st.cache_data(show_spinner=False)
 def fetch_from_gemini(word, lemma):
-    """Gemini API를 호출하여 단어 정보를 가져옵니다."""
     if not client:
-        # API 키가 없을 경우 테스트용 더미 데이터 반환
         return {"ko_meanings": [f"'{word}'의 API 정보 없음"], "examples": []}
-    
     prompt = make_prompt(word, lemma)
     res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     text = res.text.strip()
-    
-    # JSON 파싱 전 코드 블록 제거
     if text.startswith("```"):
         text = text.strip("`")
         lines = text.splitlines()
@@ -79,11 +69,9 @@ def fetch_from_gemini(word, lemma):
             text = "\n".join(lines[1:])
         elif lines:
              text = "\n".join(lines)
-             
     return json.loads(text)
 
-# ---------------------- 2. 전역 스타일 정의 (클릭 스타일 및 숨김 CSS) ----------------------
-
+# ---------------------- 2. 전역 스타일 정의 (버튼 숨김 CSS 제거, 단어 스타일 유지) ----------------------
 st.markdown("""
 <style>
     /* 1. 단어 스타일 정의: 파란색 글씨 효과 (밑줄, 박스 없음) */
@@ -112,20 +100,10 @@ st.markdown("""
         user-select: none;
     }
     
-    /* 2. ❗❗❗ 버튼 완벽 숨김 최종 강화 CSS ❗❗❗ */
-    /* st.empty()가 만든 컨테이너에 부여한 ID를 타겟팅하여 숨김 */
-    #hidden-button-slot {
-        display: none !important;
-        visibility: hidden !important;
-        width: 0 !important;
-        height: 0 !important;
-        margin: 0 !important;
-        padding: 0 !important;
-        overflow: hidden !important;
-    }
-    /* 단, st.button 자체는 visible: hidden 처리 */
-    div[data-testid="stButton"] button[key^="hidden_"] {
-        visibility: hidden !important;
+    /* ❗❗ 최종 수정: 사이드바 버튼을 완전히 숨기는 CSS */
+    /* 사이드바는 #root > div:nth-child(1) > div > div > div.stSidebarContainer > div.stSidebar */
+    /* st.sidebar의 버튼을 찾아서 숨기면, 사용자 눈에 보이지 않게 됩니다. */
+    .stSidebar button {
         display: none !important;
     }
 </style>
@@ -135,9 +113,7 @@ st.markdown("""
 
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка.")
 
-# ❗수정: 단어와 구두점을 모두 포함하는 토큰 리스트 생성
 tokens_with_punct = re.findall(r"(\w+|[^\s\w]+)", text, flags=re.UNICODE)
-# 클릭 대상이 되는 순수 단어만 추출 (중복 제거)
 clickable_words = list(dict.fromkeys([t for t in tokens_with_punct if re.fullmatch(r'\w+', t, flags=re.UNICODE)]))
 
 left, right = st.columns([2, 1])
@@ -151,26 +127,23 @@ with left:
     html_all = ""
     for tok in tokens_with_punct:
         if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
-            # 단어일 경우: 클릭 가능하도록 처리
             css = "word-span"
             if tok in st.session_state.selected_words:
                 css = "word-selected"
             
-            # ❗ onclick: 숨겨진 버튼의 key를 이용하여 쿼리 선택자로 버튼을 찾아 클릭합니다.
+            # ❗ onclick: 숨겨진 버튼이 사이드바에 있으므로, ID를 찾아 클릭합니다.
             html_all += f"""
-            <span class="{css}" onclick="document.querySelector('button[key=\\'hidden_{tok}\\']').click();">
+            <span class="{css}" onclick="document.querySelector('.stSidebar button[key=\\'sidebar_hidden_{tok}\\']').click();">
                 {tok}
             </span>
             """
         else:
-            # 구두점일 경우: 클릭 불가, 일반 텍스트로 처리
             html_all += f"""
             <span class="word-punctuation">
                 {tok}
             </span>
             """
     
-    # 단어 목록 출력
     st.markdown(html_all, unsafe_allow_html=True)
     
     # 초기화 버튼
@@ -182,34 +155,18 @@ with left:
         st.rerun()
 
 # ----------------------------------------
-# 3.2. 숨겨진 버튼 (화면 밖에서 처리)
+# 3.2. 숨겨진 버튼 (사이드바에 배치)
 # ----------------------------------------
 
-# ❗ st.empty()를 사용하여 버튼을 담을 격리된 공간 생성
-hidden_slot = st.empty()
-
-# ❗ st.empty()가 만든 div에 ID를 부여하여 CSS로 완벽히 숨깁니다.
-# 이 코드는 Streamlit의 비동기성 때문에 가장 마지막에 위치해야 합니다.
-st.markdown(f"""
-<script>
-    // st.empty()가 만든 가장 최근의 컨테이너를 찾아 ID를 부여합니다.
-    var empty_divs = document.querySelectorAll('[data-testid="stEmpty"]');
-    if (empty_divs.length > 0) {{
-        // 가장 최근의 st.empty() 컨테이너에 ID를 부여하여 CSS로 숨김
-        empty_divs[empty_divs.length - 1].id = 'hidden-button-slot';
-    }}
-</script>
-""", unsafe_allow_html=True)
-
-
-with hidden_slot:
-    # 이 공간에 버튼을 배치합니다. 이 버튼들은 상단 CSS에 의해 숨겨지고, 공간도 차지하지 않습니다.
+# ❗ st.sidebar에 버튼을 배치하고 CSS로 숨깁니다.
+with st.sidebar:
+    st.markdown("### 숨겨진 클릭 트리거")
+    # 사이드바에 버튼들이 있으므로, CSS에 의해 화면에 보이지 않습니다.
     for tok in clickable_words:
-        # key를 'hidden_'으로 시작하도록 하여 CSS 선택자와 JS querySelector에 걸리게 합니다.
-        clicked = st.button(" ", key=f"hidden_{tok}") 
+        # key를 'sidebar_hidden_'으로 시작하도록 합니다.
+        clicked = st.button(" ", key=f"sidebar_hidden_{tok}") 
 
         if clicked:
-            # 텍스트 클릭 시 실행되는 Python 로직
             st.session_state.clicked_word = tok
             if tok not in st.session_state.selected_words:
                 st.session_state.selected_words.append(tok)

@@ -1,59 +1,50 @@
 import streamlit as st
-import re
+import streamlit.components.v1 as components
+import json
 
-# 상태값
+# 상태 초기화
 if "selected_words" not in st.session_state:
     st.session_state.selected_words = []
-if "clicked_word" not in st.session_state:
-    st.session_state.clicked_word = None
 
-st.markdown("""
-<style>
-.word-btn {
-    border: none !important;
-    background: none !important;
-    padding: 0 !important;
-    margin-right: 8px !important;
-    font-size: 0.95rem !important;
-    color: #333 !important;
-    cursor: pointer !important;
-}
-.word-btn:hover {
-    text-decoration: underline;
-}
-.word-selected {
-    color: #1E88E5 !important;
-    text-decoration: underline !important;
-}
-</style>
-""", unsafe_allow_html=True)
+st.title("단어 클릭 테스트 - 완전 커스텀 방식")
 
-# ---------------- 단어 표시 ----------------
-def word_button(word: str):
-    selected = word in st.session_state.selected_words
-    css = "word-btn word-selected" if selected else "word-btn"
+text = "Человек идёт по улице Это тестовая строка".split()
 
-    # HTML 텍스트처럼 보이는 버튼 생성
-    clicked = st.button(
-        f"<span class='{css}'>{word}</span>",
-        key=f"w_{word}",
-        help="",
-        use_container_width=False
-    )
+# HTML 생성
+html_words = ""
+for w in text:
+    color = "#1E88E5" if w in st.session_state.selected_words else "#333"
+    html_words += f"""
+    <span 
+        style="margin-right:8px; cursor:pointer; color:{color}; font-size:18px;"
+        onclick="parent.postMessage({{'clicked':'{w}'}}, '*')"
+    >{w}</span>
+    """
 
-    # 클릭 시 상태 업데이트
-    if clicked:
-        if word not in st.session_state.selected_words:
-            st.session_state.selected_words.append(word)
-        st.session_state.clicked_word = word
+# HTML 렌더링
+components.html(
+    f"""
+    <html>
+    <body>{html_words}</body>
+    <script>
+    window.addEventListener('message', (event) => {{
+        if (event.data.clicked) {{
+            const params = new URLSearchParams(window.location.search);
+            params.set('clicked_word', event.data.clicked);
+            window.location.search = params.toString();
+        }}
+    }});
+    </script>
+    </html>
+    """,
+    height=120,
+)
 
+# Python 측 이벤트 처리
+clicked = st.experimental_get_query_params().get("clicked_word", [""])[0]
+if clicked:
+    if clicked not in st.session_state.selected_words:
+        st.session_state.selected_words.append(clicked)
+    st.experimental_set_query_params()  # 쿼리 초기화
 
-# ---------------- 렌더링 ----------------
-st.subheader("단어 목록 (텍스트에서 추출)")
-
-text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка.")
-tokens = re.findall(r"\w+", text)
-tokens = list(dict.fromkeys(tokens))
-
-for w in tokens:
-    word_button(w)
+st.write("### 선택된 단어:", st.session_state.selected_words)

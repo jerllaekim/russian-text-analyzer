@@ -18,11 +18,13 @@ if "clicked_word" not in st.session_state:
 if "word_info" not in st.session_state:
     st.session_state.word_info = {}
 
+# Mystem 초기화
 mystem = Mystem()
 
 @st.cache_data(show_spinner=False)
 def lemmatize_ru(word: str) -> str:
     """단어의 기본형(lemma)을 추출합니다."""
+    # 단어만 처리합니다.
     if re.fullmatch(r'\w+', word, flags=re.UNICODE):
         lemmas = mystem.lemmatize(word)
         return (lemmas[0] if lemmas else word).strip()
@@ -62,16 +64,22 @@ def make_prompt(word, lemma):
 def fetch_from_gemini(word, lemma):
     """Gemini API를 호출하여 단어 정보를 가져옵니다."""
     if not client:
-        return {"ko_meanings": ["API 키 없음"], "examples": []}
+        # API 키가 없을 경우 테스트용 더미 데이터 반환
+        return {"ko_meanings": [f"'{word}'의 API 정보 없음"], "examples": []}
     
     prompt = make_prompt(word, lemma)
     res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     text = res.text.strip()
+    
+    # JSON 파싱 전 코드 블록 제거
     if text.startswith("```"):
         text = text.strip("`")
         lines = text.splitlines()
-        if lines[0].lower().startswith("json"):
+        if lines and lines[0].lower().startswith("json"):
             text = "\n".join(lines[1:])
+        elif lines:
+             text = "\n".join(lines)
+             
     return json.loads(text)
 
 # ---------------------- 2. 전역 스타일 정의 (클릭 스타일 및 숨김 CSS) ----------------------
@@ -91,10 +99,10 @@ st.markdown("""
         background-color: transparent !important; 
     }
     .word-span:hover {
-        color: #007bff;
+        color: #007bff; /* 호버 시 파란색으로 변경 */
     }
     .word-selected {
-        color: #007bff; 
+        color: #007bff; /* 클릭된 단어는 파란색 글씨로만 표시 */
         font-weight: bold;
     }
     .word-punctuation {
@@ -104,14 +112,8 @@ st.markdown("""
         user-select: none;
     }
     
-    /* 2. 숨겨진 버튼을 완벽하게 가리기 위한 CSS (최종 버전) */
-    /* key가 'hidden_'으로 시작하는 버튼이 포함된 Streamlit 컨테이너를 타겟팅 */
-    /* Streamlit의 내부 div 구조를 활용하여 숨김을 시도합니다. */
-    div[data-testid="stButton"] button[key^="hidden_"] {
-        display: none !important;
-    }
-
-    /* 버튼이 차지하는 빈 공간 자체를 없애기 위한 CSS (st.empty()에 부여한 ID를 타겟) */
+    /* 2. ❗❗❗ 버튼 완벽 숨김 최종 강화 CSS ❗❗❗ */
+    /* st.empty()가 만든 컨테이너에 부여한 ID를 타겟팅하여 숨김 */
     #hidden-button-slot {
         display: none !important;
         visibility: hidden !important;
@@ -120,6 +122,11 @@ st.markdown("""
         margin: 0 !important;
         padding: 0 !important;
         overflow: hidden !important;
+    }
+    /* 단, st.button 자체는 visible: hidden 처리 */
+    div[data-testid="stButton"] button[key^="hidden_"] {
+        visibility: hidden !important;
+        display: none !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -182,9 +189,10 @@ with left:
 hidden_slot = st.empty()
 
 # ❗ st.empty()가 만든 div에 ID를 부여하여 CSS로 완벽히 숨깁니다.
+# 이 코드는 Streamlit의 비동기성 때문에 가장 마지막에 위치해야 합니다.
 st.markdown(f"""
 <script>
-    // st.empty()는 가장 최근에 생성된 [data-testid="stEmpty"] 요소를 만듭니다.
+    // st.empty()가 만든 가장 최근의 컨테이너를 찾아 ID를 부여합니다.
     var empty_divs = document.querySelectorAll('[data-testid="stEmpty"]');
     if (empty_divs.length > 0) {{
         // 가장 최근의 st.empty() 컨테이너에 ID를 부여하여 CSS로 숨김

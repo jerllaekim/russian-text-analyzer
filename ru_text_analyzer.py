@@ -105,7 +105,6 @@ with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
 
     # 1. CSS 스타일 정의 (클릭 커서 및 선택 효과)
-    # style 블록을 사용하여 CSS를 한 번에 정의
     css_styles = """
     <style>
         .word-span {
@@ -115,12 +114,11 @@ with left:
             display: inline-block; /* 단어들을 한 줄에 배치 */
             border-radius: 3px;
             transition: background-color 0.2s;
-            user-select: none; /* 텍스트 선택 방지 */
+            user-select: none;
             border: 1px solid transparent;
         }
-        /* 호버 시 밑줄 대신 배경색 변경 */
         .word-span:hover {
-            background-color: #f0f2f6; /* 약간 밝은 배경색 */
+            background-color: #f0f2f6;
             border: 1px solid #ccc;
         }
         .word-selected {
@@ -129,65 +127,78 @@ with left:
             margin: 2px;
             display: inline-block;
             border-radius: 3px;
-            background-color: #e0f7fa; /* 선택된 단어 배경색 */
-            color: #00796b; /* 선택된 단어 텍스트색 */
+            background-color: #e0f7fa;
+            color: #00796b;
             border: 1px solid #00bcd4;
             user-select: none;
         }
     </style>
     """
+    # ⚠️ CSS 스타일을 먼저 적용합니다.
+    st.markdown(css_styles, unsafe_allow_html=True)
+
 
     # 2. HTML 전체를 한 번에 쌓기 (단어 목록)
     html_all = ""
 
+    # tokens 리스트가 정의되어 있어야 합니다.
+    # (예: tokens = ["Человек", "идёт", "по", "улице", "Это", "тестовая", "строка"])
+    
     for tok in tokens:
-        # 선택된 단어 스타일
         css = "word-span"
-        if tok in st.session_state.selected_words:
+        # st.session_state.selected_words도 미리 초기화되어 있어야 합니다. (예: st.session_state.selected_words = [])
+        if 'selected_words' in st.session_state and tok in st.session_state.selected_words:
             css = "word-selected"
 
-        # 각 단어 span HTML 생성
-        # data-tok 속성으로 단어를 저장하여 JS에서 사용하도록 함.
-        # onclick 시 숨겨진 버튼을 클릭하도록 강제 실행.
+        # 각 단어 span HTML 생성 - 숨겨진 버튼을 클릭합니다.
+        # ID가 btn_hidden_... 인지 확인하세요.
         html_all += f"""
         <span class="{css}" onclick="document.getElementById('btn_hidden_{tok}').click();">
             {tok}
         </span>
         """
 
-    # ---- CSS와 HTML을 한 번에 출력 ----
-    st.markdown(css_styles + html_all, unsafe_allow_html=True)
+    # ⚠️ HTML 콘텐츠를 출력합니다.
+    st.markdown(html_all, unsafe_allow_html=True)
 
-    # ---- 숨겨진 버튼들 (화면에 안보임) ----
+    
     # 3. Streamlit 버튼을 숨기기 위한 CSS 스타일 추가
-    # 버튼 자체는 필요하지만 화면에 보이지 않도록 함.
+    # 버튼 자체는 화면에 보이지 않도록 강력하게 숨깁니다.
     hide_button_css = """
     <style>
-        /* key가 'btn_hidden_'로 시작하는 버튼을 숨김 */
-        [data-testid*="stButton"] button[key^="btn_hidden_"] {
+        /* 버튼의 key가 'btn_hidden_'로 시작하는 요소를 숨김 */
+        /* Streamlit 1.x 버전 이상에서 안정적으로 작동하는 CSS 선택자입니다. */
+        div[data-testid*="stButton"] button[key^="btn_hidden_"] {
             display: none !important;
+            height: 0 !important;
+            padding: 0 !important;
+            border: none !important;
         }
     </style>
     """
     st.markdown(hide_button_css, unsafe_allow_html=True)
     
     # 4. 숨겨진 버튼 로직
+    # 이 버튼들은 숨겨져 있지만, JS의 onclick 이벤트에 의해 클릭되어 로직을 실행합니다.
     for tok in tokens:
-        # key를 고유하게 변경 (충돌 방지)
+        # key가 HTML의 onclick ID와 일치해야 합니다: 'btn_hidden_' + tok
         clicked = st.button(" ", key=f"btn_hidden_{tok}") 
         if clicked:
             st.session_state.clicked_word = tok
             if tok not in st.session_state.selected_words:
                 st.session_state.selected_words.append(tok)
-            # st.rerun()은 자동으로 실행되므로 필요 없음.
-            # 하지만 클릭 후 다른 동작이 필요하면 여기에 추가.
+            # 클릭되면 자동으로 리런(rerun)됩니다.
+
 
     # 5. 초기화 버튼
-    st.markdown("---") # 시각적 분리
+    st.markdown("---")
     if st.button("🔄 초기화"):
-        st.session_state.selected_words = []
-        st.session_state.clicked_word = None
-        st.session_state.word_info = {}
+        if 'selected_words' in st.session_state:
+            st.session_state.selected_words = []
+        if 'clicked_word' in st.session_state:
+            st.session_state.clicked_word = None
+        if 'word_info' in st.session_state:
+            st.session_state.word_info = {}
         st.rerun()
 
 # ---------------------- 오른쪽: 단어 정보 ----------------------

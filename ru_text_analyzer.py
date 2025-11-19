@@ -102,6 +102,7 @@ tokens = list(dict.fromkeys(re.findall(r"\w+", text, flags=re.UNICODE)))
 
 left, right = st.columns([2, 1])
 # ----------------------------------------
+# ----------------------------------------
 # 1. 단어 목록 (화면에 보이는 영역)
 # ----------------------------------------
 with left:
@@ -110,31 +111,34 @@ with left:
     # 1-A. 단어 스타일 정의 및 버튼 숨김 CSS
     word_styles_and_hide_css = """
     <style>
-        /* 1. 단어 스타일 정의: 밑줄 제거 및 깔끔한 호버 효과 */
+        /* 1. 단어 스타일 정의: 파란색 글씨 효과 */
         .word-span, .word-selected {
             cursor: pointer;
             padding: 2px 4px;
             margin: 2px;
             display: inline-block;
             border-radius: 3px;
-            transition: background-color 0.2s;
+            transition: color 0.2s, background-color 0.2s;
             user-select: none;
             border: 1px solid transparent;
-            text-decoration: none; /* ❗밑줄 제거 */
+            text-decoration: none; /* 밑줄 제거 */
+            background-color: transparent; /* 배경색 제거 */
         }
         .word-span:hover {
-            background-color: #f0f2f6; /* 호버 시 배경색 변경 */
-            border: 1px solid #ccc;
+            color: #007bff; /* 호버 시 파란색으로 변경하여 클릭 가능함을 알림 */
+            background-color: transparent; 
         }
         .word-selected {
-            background-color: #e0f7fa;
-            color: #00796b;
-            border: 1px solid #00bcd4;
+            color: #007bff; /* ❗클릭된 단어는 파란색 글씨로만 표시 */
+            font-weight: bold;
+            border: 1px solid transparent;
+            background-color: transparent;
         }
-
-        /* 2. 숨겨진 버튼이 있는 컨테이너를 완벽하게 숨김 */
-        /* 이 ID는 아래 2-B 섹션에서 st.markdown으로 설정됩니다. */
+        
+        /* 2. 숨겨진 버튼을 완벽하게 가리기 위한 CSS */
+        /* 아래 2-B 섹션에서 st.markdown으로 설정할 ID를 타겟팅합니다. */
         #hidden-button-container {
+            /* 이 컨테이너 자체를 화면에서 완벽하게 제거 */
             display: none !important;
             visibility: hidden !important;
             width: 0 !important;
@@ -157,7 +161,8 @@ with left:
         if 'selected_words' in st.session_state and tok in st.session_state.selected_words:
             css = "word-selected"
 
-        # onclick: 숨겨진 버튼의 ID(hidden-trigger-...)를 정확히 타겟팅
+        # onclick: 숨겨진 버튼의 ID(hidden-trigger-...)를 정확히 타겟팅합니다.
+        # ID는 아래 2-B에서 JavaScript로 부여됩니다.
         html_all += f"""
         <span class="{css}" onclick="document.getElementById('hidden-trigger-{tok}').click();">
             {tok}
@@ -175,86 +180,48 @@ with left:
         st.session_state.word_info = {}
         st.rerun()
 
-# ----------------------------------------
+     # ----------------------------------------
 # 2. 숨겨진 버튼들 (화면에 보이지 않는 영역)
 # ----------------------------------------
 
 # 2-A. 숨겨진 버튼을 담을 컨테이너 생성 및 ID 부여
-# 이 HTML/JS 코드가 아래 st.button보다 먼저 실행되어 컨테이너를 생성합니다.
+# 이 코드가 실행되면 CSS에 의해 이 div와 그 안의 모든 내용이 화면에서 제거됩니다.
 st.markdown('<div id="hidden-button-container">', unsafe_allow_html=True)
 
 # 2-B. 숨겨진 버튼 로직
-# 이 버튼들은 2-A의 div 안에 배치되며, 1-A의 CSS로 완벽히 숨겨집니다.
+# 이 버튼들은 2-A의 div 안에 배치되며, 완벽히 숨겨집니다.
 for tok in tokens:
-    # 1. Streamlit 버튼 생성 (버튼의 내용은 중요하지 않습니다.)
+    # 1. Streamlit 버튼 생성
+    # 버튼에 고유한 key를 부여합니다.
     clicked = st.button(" ", key=f"key_{tok}") 
 
-    # 2. **버튼에 HTML ID 강제 부여 (가장 중요한 트릭)**
-    # st.button이 생성하는 실제 <button> 요소에 고유 ID를 부여하여
-    # 1-B의 onclick 이벤트가 정확히 이 버튼을 클릭하도록 만듭니다.
+    # 2. **버튼에 HTML ID 강제 부여 (작동의 핵심)**
+    # 가장 최근에 생성된 Streamlit 버튼에 JavaScript로 ID를 강제 부여합니다.
     st.markdown(f"""
     <script>
-        // key가 'key_{tok}'인 버튼을 찾고 ID를 부여합니다.
-        var target_button = document.querySelector('button[key="key_{tok}"]');
-        if (target_button) {{
-            target_button.id = 'hidden-trigger-{tok}';
+        // document.querySelector('button[key="key_{tok}"]')을 사용해야 하지만, 
+        // Streamlit이 key를 노출하지 않을 수 있으므로, ID 부여를 더 간단하게 시도합니다.
+        
+        // **디버깅 포인트 1:** 가장 최근에 생성된 버튼을 찾기 위해 버튼의 텍스트(공백)와 인덱스를 사용
+        var buttons = document.querySelectorAll('button');
+        var lastButton = buttons[buttons.length - 1]; // 마지막 버튼을 타겟팅
+        
+        // **디버깅 포인트 2:** 버튼이 존재하고 ID가 없는 경우에만 ID를 부여하여 중복 방지
+        if (lastButton && !lastButton.id) {{
+            lastButton.id = 'hidden-trigger-{tok}';
         }}
     </script>
     """, unsafe_allow_html=True)
     
     if clicked:
-        # 이 부분이 1-B의 <span> 클릭 시 실행되는 Python 로직입니다.
+        # 이 부분이 텍스트 클릭 시 실행되는 Python 로직입니다.
         st.session_state.clicked_word = tok
         if tok not in st.session_state.selected_words:
             st.session_state.selected_words.append(tok)
-        # Rerun은 이 클릭 이벤트 후 Streamlit에 의해 자동 실행됩니다.
+        # Rerun은 자동 실행됩니다.
 
 # 2-C. 숨겨진 컨테이너 닫기
 st.markdown('</div>', unsafe_allow_html=True)
-
-# ---------------------- 오른쪽: 단어 정보 ----------------------
-with right:
-    st.subheader("📚 단어 정보")
-
-    cw = st.session_state.clicked_word
-
-    if cw:
-        lemma = lemmatize_ru(cw)
-        st.write(f"**선택된 단어:** {cw}")
-        st.write(f"**기본형(lemma):** *{lemma}*")
-
-        try:
-            info = fetch_from_gemini(cw, lemma)
-        except Exception as e:
-            st.error(f"Gemini 오류: {e}")
-            info = {}
-
-        ko_meanings = info.get("ko_meanings", [])
-        examples = info.get("examples", [])
-
-        if ko_meanings:
-            st.session_state.word_info[lemma] = {
-                "lemma": lemma,
-                "ko_meanings": ko_meanings
-            }
-
-            st.markdown("**한국어 뜻:**")
-            for m in ko_meanings:
-                st.markdown(f"- {m}")
-
-        if examples:
-            st.markdown("### 📖 예문")
-            for ex in examples:
-                st.markdown(f"- **{ex.get('ru','')}**")
-                st.markdown(f" → {ex.get('ko','')}")
-
-        # 외부 링크
-        mt = f"https://www.multitran.com/m.exe?l1=2&l2=5&s={lemma}"
-        rnc = f"https://ruscorpora.ru/search?search={lemma}"
-        st.markdown(f"[Multitran에서 검색]({mt})  \n[러시아 국립 코퍼스]({rnc})")
-
-    else:
-        st.info("왼쪽 단어를 클릭하세요.")
 
 # ---------------------- 하단: 누적 목록 + CSV ----------------------
 st.divider()

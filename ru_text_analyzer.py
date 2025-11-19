@@ -105,40 +105,34 @@ left, right = st.columns([2, 1])
 with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
 
-    # 단어들 가로로 배치하기 위한 HTML 래퍼
-    st.markdown("<div class='word-container'>", unsafe_allow_html=True)
+    # HTML 전체를 한 번에 쌓기
+    html_all = ""
 
     for tok in tokens:
-        # 선택된 단어는 파란색 + 밑줄
+
+        # 선택된 단어 스타일
         css = "word-span"
         if tok in st.session_state.selected_words:
-            css = "word-span word-selected"
+            css = "word-selected"
 
-        # 사용자에게 보이는 실제 텍스트(span)
-        st.markdown(
-            f"""
-            <span class="{css}" onclick="document.getElementById('btn_{tok}').click();">
-                {tok}
-            </span>
-            """,
-            unsafe_allow_html=True
-        )
+        # 각 단어 span HTML 생성
+        html_all += f"""
+        <span class="{css}" onclick="document.getElementById('btn_{tok}').click();">
+            {tok}
+        </span>
+        """
 
-        # 버튼 UI 완전 숨기기
-        hidden = st.container()
-        with hidden:
-            st.markdown("<div class='hidden-btn'>", unsafe_allow_html=True)
-            clicked = st.button(" ", key=f"btn_{tok}")
-            st.markdown("</div>", unsafe_allow_html=True)
+    # ---- 여기서 한 번에 출력하니까 가로로 나열됨 ----
+    st.markdown(html_all, unsafe_allow_html=True)
 
-        # 클릭 처리
+    # ---- 숨겨진 버튼들 (세로여도 상관 없음, 화면에 안보임) ----
+    for tok in tokens:
+        clicked = st.button(" ", key=f"btn_{tok}")
         if clicked:
             st.session_state.clicked_word = tok
             if tok not in st.session_state.selected_words:
                 st.session_state.selected_words.append(tok)
             st.rerun()
-
-    st.markdown("</div>", unsafe_allow_html=True)
 
     # 초기화 버튼
     if st.button("🔄 초기화"):

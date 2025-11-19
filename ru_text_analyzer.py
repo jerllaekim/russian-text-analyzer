@@ -23,28 +23,62 @@ if "word_info" not in st.session_state:
 
 
 # ─────────────────────────────
-# CSS: 버튼을 텍스트처럼 보이게 + 간격 좁게
+# CSS: 단어 목록을 텍스트처럼, 선택 시 파란색/밑줄
 # ─────────────────────────────
 st.markdown(
     """
 <style>
-/* 모든 버튼을 기본적으로 "텍스트"처럼 보이게 */
-.stButton {
-    display: inline-block;              /* 옆으로 나열되도록 */
+/* 단어 목록용 래퍼: 인라인으로 나열 */
+.word-chip, .word-chip-selected {
+    display: inline-block;
 }
-.stButton > button {
+
+/* 기본 단어: 버튼이지만 텍스트처럼 보이게 */
+.word-chip button {
     border: none !important;
     background: transparent !important;
-    padding: 0 4px !important;          /* 단어 간 간격 좁게 */
-    margin: 0 2px 4px 0 !important;
+    padding: 0 4px !important;          /* 단어 간 간격 */
+    margin: 0 0 4px 0 !important;
     color: #333333 !important;
     font-size: 0.95rem !important;
     line-height: 1.4 !important;
     cursor: pointer !important;
 }
 
-/* 선택 단어 배너에서는 라벨을 :blue[...] 로 처리해서 색만 바꿀 것이라
-   여기서는 별도 색 지정 X */
+/* 선택된 단어: 파란색 + 밑줄 느낌 */
+.word-chip-selected button {
+    border: none !important;
+    background: transparent !important;
+    padding: 0 4px !important;
+    margin: 0 0 4px 0 !important;
+    color: #1E88E5 !important;
+    font-size: 0.95rem !important;
+    line-height: 1.4 !important;
+    cursor: pointer !important;
+    text-decoration: underline;
+}
+
+/* 하단 선택 단어 배너용 칩 */
+.selected-chip, .selected-chip-active {
+    display: inline-block;
+}
+.selected-chip button,
+.selected-chip-active button {
+    border: none !important;
+    background: transparent !important;
+    padding: 2px 6px !important;
+    margin: 0 4px 4px 0 !important;
+    font-size: 0.95rem !important;
+    cursor: pointer !important;
+}
+.selected-chip button {
+    color: #1E88E5 !important;
+}
+.selected-chip-active button {
+    color: #ffffff !important;
+    background: #1E88E5 !important;
+    border-radius: 999px !important;
+}
 </style>
 """,
     unsafe_allow_html=True,
@@ -136,7 +170,7 @@ left, right = st.columns([2, 1], gap="large")
 
 
 # ─────────────────────────────
-# 왼쪽: 단어 리스트(텍스트처럼 보이는 버튼)
+# 왼쪽: 단어 목록 (텍스트처럼 가로로 나열)
 # ─────────────────────────────
 with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
@@ -145,14 +179,17 @@ with left:
     if not unique_tokens:
         st.info("텍스트에서 단어를 찾지 못했습니다.")
     else:
-        # 열(columns)을 쓰지 않고, 버튼을 인라인으로 나열 → 문장처럼 보이게
+        # 문장처럼 가로로 쭉 나열
         for idx, tok in enumerate(unique_tokens):
+            is_selected = tok in st.session_state.selected_words
+            cls = "word-chip-selected" if is_selected else "word-chip"
+            st.markdown(f"<span class='{cls}'>", unsafe_allow_html=True)
             if st.button(tok, key=f"wordchip_{idx}_{tok}"):
                 st.session_state.clicked_word = tok
                 if tok not in st.session_state.selected_words:
                     st.session_state.selected_words.append(tok)
-        # 줄바꿈용
-        st.write("")
+            st.markdown("</span>", unsafe_allow_html=True)
+        st.write("")  # 줄바꿈
 
     with st.expander("초기화"):
         if st.button("🔄 선택 & 누적 데이터 초기화", key="reset_all"):
@@ -231,17 +268,18 @@ if not selected and not word_info:
     st.caption("아직 클릭해서 누적된 단어가 없습니다. 위 단어 목록에서 단어를 선택해보세요.")
 else:
     if selected:
-        st.caption("파란색 단어를 클릭하면 다시 상세 정보를 볼 수 있습니다.")
+        st.caption("아래 파란 단어를 클릭하면 다시 상세 정보를 볼 수 있습니다.")
 
-        # 아래 배너의 단어들은 파란색으로 표시
         for w in selected:
             if w == cw:
-                label = f":blue[**{w}**]"  # 현재 선택된 단어는 진하게
+                cls = "selected-chip-active"
             else:
-                label = f":blue[{w}]"
-            if st.button(label, key=f"selectedchip_{w}"):
+                cls = "selected-chip"
+            st.markdown(f"<span class='{cls}'>", unsafe_allow_html=True)
+            if st.button(w, key=f"selectedchip_{w}"):
                 st.session_state.clicked_word = w
                 st.rerun()
+            st.markdown("</span>", unsafe_allow_html=True)
         st.write("")
 
     if word_info:

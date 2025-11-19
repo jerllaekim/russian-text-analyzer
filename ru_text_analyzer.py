@@ -22,6 +22,7 @@ mystem = Mystem()
 
 @st.cache_data(show_spinner=False)
 def lemmatize_ru(word: str) -> str:
+    """단어의 기본형(lemma)을 추출합니다."""
     if re.fullmatch(r'\w+', word, flags=re.UNICODE):
         lemmas = mystem.lemmatize(word)
         return (lemmas[0] if lemmas else word).strip()
@@ -34,13 +35,14 @@ if not api_key:
 else:
     client = genai.Client(api_key=api_key)
 
+
 SYSTEM_PROMPT = """
 너는 러시아어-한국어 학습을 돕는 도우미이다.
 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 제공한다.
 반드시 JSON만 출력한다.
 """
+
 def make_prompt(word, lemma):
-    # (프롬프트 내용은 생략 - 동일)
     return f"""
 {SYSTEM_PROMPT}
 단어: {word}
@@ -57,11 +59,15 @@ def make_prompt(word, lemma):
 
 @st.cache_data(show_spinner=False)
 def fetch_from_gemini(word, lemma):
+    """Gemini API를 호출하여 단어 정보를 가져옵니다."""
     if not client:
-        return {"ko_meanings": [f"'{word}'의 API 정보 없음"], "examples": []}
+        return {"ko_meanings": [f"'{word}'의 API 키 없음 (GEMINI_API_KEY 설정 필요)"], "examples": []}
+    
     prompt = make_prompt(word, lemma)
     res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     text = res.text.strip()
+    
+    # JSON 파싱 전 코드 블록 제거
     if text.startswith("```"):
         text = text.strip("`")
         lines = text.splitlines()
@@ -69,9 +75,11 @@ def fetch_from_gemini(word, lemma):
             text = "\n".join(lines[1:])
         elif lines:
              text = "\n".join(lines)
+             
     return json.loads(text)
 
-# ---------------------- 2. 전역 스타일 정의 (버튼 숨김 CSS 제거, 단어 스타일 유지) ----------------------
+# ---------------------- 2. 전역 스타일 정의 (클릭 스타일 및 버튼 완벽 숨김) ----------------------
+
 st.markdown("""
 <style>
     /* 1. 단어 스타일 정의: 파란색 글씨 효과 (밑줄, 박스 없음) */
@@ -100,11 +108,16 @@ st.markdown("""
         user-select: none;
     }
     
-    /* ❗❗ 최종 수정: 사이드바 버튼을 완전히 숨기는 CSS */
-    /* 사이드바는 #root > div:nth-child(1) > div > div > div.stSidebarContainer > div.stSidebar */
-    /* st.sidebar의 버튼을 찾아서 숨기면, 사용자 눈에 보이지 않게 됩니다. */
+    /* 2. ❗❗❗ 버튼 완벽 숨김 최종 강화 CSS (사이드바에 있는 모든 버튼 숨김) ❗❗❗ */
     .stSidebar button {
         display: none !important;
+    }
+    /* 버튼이 차지하는 공간 자체도 숨김 (Streamlit 컴포넌트의 부모 div를 타겟) */
+    .stSidebar > div:nth-child(1) .stButton {
+        visibility: hidden;
+        height: 0px;
+        margin: 0px;
+        padding: 0px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -113,7 +126,9 @@ st.markdown("""
 
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка.")
 
+# 단어와 구두점을 모두 포함하는 토큰 리스트 생성
 tokens_with_punct = re.findall(r"(\w+|[^\s\w]+)", text, flags=re.UNICODE)
+# 클릭 대상이 되는 순수 단어만 추출 (중복 제거)
 clickable_words = list(dict.fromkeys([t for t in tokens_with_punct if re.fullmatch(r'\w+', t, flags=re.UNICODE)]))
 
 left, right = st.columns([2, 1])
@@ -131,13 +146,14 @@ with left:
             if tok in st.session_state.selected_words:
                 css = "word-selected"
             
-            # ❗ onclick: 숨겨진 버튼이 사이드바에 있으므로, ID를 찾아 클릭합니다.
+            # ❗ onclick: JavaScript를 이용해 사이드바의 ID를 가진 버튼을 찾아 클릭합니다.
             html_all += f"""
-            <span class="{css}" onclick="document.querySelector('.stSidebar button[key=\\'sidebar_hidden_{tok}\\']').click();">
+            <span class="{css}" onclick="document.getElementById('trigger-{tok}').click();">
                 {tok}
             </span>
             """
         else:
+            # 구두점일 경우: 클릭 불가, 일반 텍스트로 처리
             html_all += f"""
             <span class="word-punctuation">
                 {tok}
@@ -155,18 +171,30 @@ with left:
         st.rerun()
 
 # ----------------------------------------
-# 3.2. 숨겨진 버튼 (사이드바에 배치)
+# 3.2. 숨겨진 버튼 (사이드바에 배치 - 완벽 격리)
 # ----------------------------------------
 
-# ❗ st.sidebar에 버튼을 배치하고 CSS로 숨깁니다.
 with st.sidebar:
-    st.markdown("### 숨겨진 클릭 트리거")
-    # 사이드바에 버튼들이 있으므로, CSS에 의해 화면에 보이지 않습니다.
+    # ❗ "숨겨진 클릭 트리거" 텍스트를 제거하여 아무것도 보이지 않게 합니다.
+    
     for tok in clickable_words:
-        # key를 'sidebar_hidden_'으로 시작하도록 합니다.
+        # 1. Streamlit 버튼 생성 (key는 Streamlit 상태를 유지하는 용도로만 사용)
         clicked = st.button(" ", key=f"sidebar_hidden_{tok}") 
+        
+        # 2. ❗ JavaScript를 사용해 버튼에 안정적인 HTML ID를 부여합니다. (클릭 연동의 핵심)
+        st.markdown(f"""
+        <script>
+            // 사이드바에서 가장 최근에 생성된 버튼을 찾아 ID를 부여합니다.
+            var buttons = document.querySelectorAll('.stSidebar button');
+            var lastButton = buttons[buttons.length - 1];
+            if (lastButton) {{
+                lastButton.id = 'trigger-{tok}';
+            }}
+        </script>
+        """, unsafe_allow_html=True)
 
         if clicked:
+            # 텍스트 클릭 시 실행되는 Python 로직
             st.session_state.clicked_word = tok
             if tok not in st.session_state.selected_words:
                 st.session_state.selected_words.append(tok)

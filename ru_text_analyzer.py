@@ -184,28 +184,6 @@ st.subheader("📝 선택한 단어 모음")
 selected = st.session_state.selected_words
 word_info = st.session_state.word_info
 
-# ---- 클릭한 단어 리스트 (가로 span) ----
-if selected:
-    st.markdown("**클릭한 단어들:**")
-
-    html_line = ""
-    for w in selected:
-        html_line += f"""
-        <span style="
-            display:inline-block;
-            margin-right:8px;
-            color:#1E88E5;
-            font-size:0.95rem;
-            text-decoration: underline;
-        ">
-            {w}
-        </span>
-        """
-
-    st.markdown(html_line, unsafe_allow_html=True)
-else:
-    st.caption("아직 선택된 단어가 없습니다.")
-
 # ---- lemma / 뜻 표 ----
 if word_info:
     rows = []

@@ -105,36 +105,86 @@ left, right = st.columns([2, 1])
 with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
 
-    # HTML 전체를 한 번에 쌓기
+    # 1. CSS 스타일 정의 (클릭 커서 및 선택 효과)
+    # style 블록을 사용하여 CSS를 한 번에 정의
+    css_styles = """
+    <style>
+        .word-span {
+            cursor: pointer; /* 마우스를 올렸을 때 클릭 가능한 모양으로 변경 */
+            padding: 2px 4px;
+            margin: 2px;
+            display: inline-block; /* 단어들을 한 줄에 배치 */
+            border-radius: 3px;
+            transition: background-color 0.2s;
+            user-select: none; /* 텍스트 선택 방지 */
+            border: 1px solid transparent;
+        }
+        /* 호버 시 밑줄 대신 배경색 변경 */
+        .word-span:hover {
+            background-color: #f0f2f6; /* 약간 밝은 배경색 */
+            border: 1px solid #ccc;
+        }
+        .word-selected {
+            cursor: pointer;
+            padding: 2px 4px;
+            margin: 2px;
+            display: inline-block;
+            border-radius: 3px;
+            background-color: #e0f7fa; /* 선택된 단어 배경색 */
+            color: #00796b; /* 선택된 단어 텍스트색 */
+            border: 1px solid #00bcd4;
+            user-select: none;
+        }
+    </style>
+    """
+
+    # 2. HTML 전체를 한 번에 쌓기 (단어 목록)
     html_all = ""
 
     for tok in tokens:
-
         # 선택된 단어 스타일
         css = "word-span"
         if tok in st.session_state.selected_words:
             css = "word-selected"
 
         # 각 단어 span HTML 생성
+        # data-tok 속성으로 단어를 저장하여 JS에서 사용하도록 함.
+        # onclick 시 숨겨진 버튼을 클릭하도록 강제 실행.
         html_all += f"""
-        <span class="{css}" onclick="document.getElementById('btn_{tok}').click();">
+        <span class="{css}" onclick="document.getElementById('btn_hidden_{tok}').click();">
             {tok}
         </span>
         """
 
-    # ---- 여기서 한 번에 출력하니까 가로로 나열됨 ----
-    st.markdown(html_all, unsafe_allow_html=True)
+    # ---- CSS와 HTML을 한 번에 출력 ----
+    st.markdown(css_styles + html_all, unsafe_allow_html=True)
 
-    # ---- 숨겨진 버튼들 (세로여도 상관 없음, 화면에 안보임) ----
+    # ---- 숨겨진 버튼들 (화면에 안보임) ----
+    # 3. Streamlit 버튼을 숨기기 위한 CSS 스타일 추가
+    # 버튼 자체는 필요하지만 화면에 보이지 않도록 함.
+    hide_button_css = """
+    <style>
+        /* key가 'btn_hidden_'로 시작하는 버튼을 숨김 */
+        [data-testid*="stButton"] button[key^="btn_hidden_"] {
+            display: none !important;
+        }
+    </style>
+    """
+    st.markdown(hide_button_css, unsafe_allow_html=True)
+    
+    # 4. 숨겨진 버튼 로직
     for tok in tokens:
-        clicked = st.button(" ", key=f"btn_{tok}")
+        # key를 고유하게 변경 (충돌 방지)
+        clicked = st.button(" ", key=f"btn_hidden_{tok}") 
         if clicked:
             st.session_state.clicked_word = tok
             if tok not in st.session_state.selected_words:
                 st.session_state.selected_words.append(tok)
-            st.rerun()
+            # st.rerun()은 자동으로 실행되므로 필요 없음.
+            # 하지만 클릭 후 다른 동작이 필요하면 여기에 추가.
 
-    # 초기화 버튼
+    # 5. 초기화 버튼
+    st.markdown("---") # 시각적 분리
     if st.button("🔄 초기화"):
         st.session_state.selected_words = []
         st.session_state.clicked_word = None

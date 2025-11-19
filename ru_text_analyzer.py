@@ -23,16 +23,21 @@ mystem = Mystem()
 @st.cache_data(show_spinner=False)
 def lemmatize_ru(word: str) -> str:
     """단어의 기본형(lemma)을 추출합니다."""
-    lemmas = mystem.lemmatize(word)
-    return (lemmas[0] if lemmas else word).strip()
+    # 단어만 처리하고 구두점은 처리하지 않습니다.
+    if re.fullmatch(r'\w+', word, flags=re.UNICODE):
+        lemmas = mystem.lemmatize(word)
+        return (lemmas[0] if lemmas else word).strip()
+    return word
 
 # ---------------------- 1. Gemini 연동 함수 ----------------------
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
     st.error("GEMINI_API_KEY 환경 변수가 설정되지 않았습니다.")
-    st.stop()
+    # st.stop() # 테스트를 위해 주석 처리하거나, 환경 변수가 없으면 오류 없이 진행되도록 조정
+    client = None
+else:
+    client = genai.Client(api_key=api_key)
 
-client = genai.Client(api_key=api_key)
 
 SYSTEM_PROMPT = """
 너는 러시아어-한국어 학습을 돕는 도우미이다.
@@ -58,6 +63,9 @@ def make_prompt(word, lemma):
 @st.cache_data(show_spinner=False)
 def fetch_from_gemini(word, lemma):
     """Gemini API를 호출하여 단어 정보를 가져옵니다."""
+    if not client:
+        return {"ko_meanings": ["API 키 없음"], "examples": []}
+    
     prompt = make_prompt(word, lemma)
     res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     text = res.text.strip()
@@ -70,20 +78,18 @@ def fetch_from_gemini(word, lemma):
 
 # ---------------------- 2. 전역 스타일 정의 (클릭 스타일 및 숨김 CSS) ----------------------
 
-# ❗ 요청하신 파란색 글씨 스타일과 숨겨진 버튼 CSS를 정의합니다.
 st.markdown("""
 <style>
     /* 1. 단어 스타일 정의: 파란색 글씨 효과 (밑줄, 박스 없음) */
     .word-span, .word-selected {
         cursor: pointer;
         padding: 2px 4px;
-        margin: 2px;
+        margin: 2px 0; /* 단어 간격 조정 */
         display: inline-block;
-        border-radius: 3px;
         transition: color 0.2s;
         user-select: none;
-        border: 1px solid transparent;
-        text-decoration: none !important; /* 기존 CSS의 밑줄 재정의 */
+        border: none !important;
+        text-decoration: none !important; 
         background-color: transparent !important; 
     }
     .word-span:hover {
@@ -92,6 +98,12 @@ st.markdown("""
     .word-selected {
         color: #007bff; /* 클릭된 단어는 파란색 글씨로만 표시 */
         font-weight: bold;
+    }
+    .word-punctuation { /* 구두점 스타일 */
+        padding: 2px 0px;
+        margin: 2px 0;
+        display: inline-block;
+        user-select: none;
     }
     
     /* 2. 숨겨진 버튼을 완벽하게 가리기 위한 CSS */
@@ -108,9 +120,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------- 3. 메인 로직 및 레이아웃 ----------------------
+
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка.")
-# 중복 없는 토큰 리스트 추출
-tokens = list(dict.fromkeys(re.findall(r"\w+", text, flags=re.UNICODE)))
+
+# ❗수정: 단어와 구두점을 모두 포함하는 토큰 리스트 생성
+# 구두점(., ?, !, , 등)과 단어를 모두 분리하여 리스트에 담습니다.
+tokens_with_punct = re.findall(r"(\w+|[^\s\w]+)", text, flags=re.UNICODE)
+# 클릭 대상이 되는 순수 단어만 추출 (중복 제거)
+clickable_words = list(dict.fromkeys([t for t in tokens_with_punct if re.fullmatch(r'\w+', t, flags=re.UNICODE)]))
 
 left, right = st.columns([2, 1])
 
@@ -121,18 +138,27 @@ with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
 
     html_all = ""
-    for tok in tokens:
-        css = "word-span"
-        if tok in st.session_state.selected_words:
-            css = "word-selected"
-
-        # onclick: 숨겨진 버튼의 ID(hidden-trigger-...)를 정확히 타겟팅
-        html_all += f"""
-        <span class="{css}" onclick="document.getElementById('hidden-trigger-{tok}').click();">
-            {tok}
-        </span>
-        """
-
+    for tok in tokens_with_punct:
+        if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
+            # 단어일 경우: 클릭 가능하도록 처리
+            css = "word-span"
+            if tok in st.session_state.selected_words:
+                css = "word-selected"
+            
+            # onclick: 숨겨진 버튼의 ID(hidden-trigger-...)를 정확히 타겟팅
+            html_all += f"""
+            <span class="{css}" onclick="document.getElementById('hidden-trigger-{tok}').click();">
+                {tok}
+            </span>
+            """
+        else:
+            # 구두점일 경우: 클릭 불가, 일반 텍스트로 처리
+            html_all += f"""
+            <span class="word-punctuation">
+                {tok}
+            </span>
+            """
+    
     # 단어 목록 출력
     st.markdown(html_all, unsafe_allow_html=True)
     
@@ -151,7 +177,8 @@ with left:
 # ❗ CSS로 완벽히 숨겨지는 컨테이너 생성
 st.markdown('<div id="hidden-button-container">', unsafe_allow_html=True)
 
-for tok in tokens:
+# 숨겨진 버튼은 클릭 가능한 단어(clickable_words)에 대해서만 생성합니다.
+for tok in clickable_words:
     # 1. Streamlit 버튼 생성 (화면에는 안 보임)
     clicked = st.button(" ", key=f"key_{tok}") 
 
@@ -179,10 +206,11 @@ for tok in tokens:
             with st.spinner(f"'{tok}'의 정보를 불러오는 중..."):
                 try:
                     info = fetch_from_gemini(tok, lemma)
-                    st.session_state.word_info[lemma] = {**info, "loaded_token": tok}
+                    # 기본형(lemma)을 키로 저장 (중복 방지)
+                    st.session_state.word_info[lemma] = {**info, "loaded_token": tok} 
                 except Exception as e:
                     st.error(f"단어 정보 로드 오류: {e}")
-        st.rerun() # 정보 로드 후 UI 업데이트
+        st.rerun() 
 
 # 숨겨진 컨테이너 닫기
 st.markdown('</div>', unsafe_allow_html=True)
@@ -197,7 +225,7 @@ with right:
     
     if current_token:
         lemma = lemmatize_ru(current_token)
-        info = st.session_state.word_info.get(lemma, {}) # lemma로 정보 조회
+        info = st.session_state.word_info.get(lemma, {})
 
         if info:
             st.markdown(f"### **{current_token}**")
@@ -233,7 +261,6 @@ word_info = st.session_state.word_info
 # ---- lemma / 뜻 표 ----
 if word_info:
     rows = []
-    # word_info는 lemma를 key로 가지므로, selected_words 순서대로 출력하기 위해 재구성
     processed_lemmas = set()
     for tok in selected:
         lemma = lemmatize_ru(tok)

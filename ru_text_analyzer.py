@@ -23,7 +23,6 @@ mystem = Mystem()
 @st.cache_data(show_spinner=False)
 def lemmatize_ru(word: str) -> str:
     """단어의 기본형(lemma)을 추출합니다."""
-    # 단어만 처리하고 구두점은 처리하지 않습니다.
     if re.fullmatch(r'\w+', word, flags=re.UNICODE):
         lemmas = mystem.lemmatize(word)
         return (lemmas[0] if lemmas else word).strip()
@@ -32,8 +31,7 @@ def lemmatize_ru(word: str) -> str:
 # ---------------------- 1. Gemini 연동 함수 ----------------------
 api_key = os.getenv("GEMINI_API_KEY")
 if not api_key:
-    st.error("GEMINI_API_KEY 환경 변수가 설정되지 않았습니다.")
-    # st.stop() # 테스트를 위해 주석 처리하거나, 환경 변수가 없으면 오류 없이 진행되도록 조정
+    # st.error("GEMINI_API_KEY 환경 변수가 설정되지 않았습니다.")
     client = None
 else:
     client = genai.Client(api_key=api_key)
@@ -84,7 +82,7 @@ st.markdown("""
     .word-span, .word-selected {
         cursor: pointer;
         padding: 2px 4px;
-        margin: 2px 0; /* 단어 간격 조정 */
+        margin: 2px 0;
         display: inline-block;
         transition: color 0.2s;
         user-select: none;
@@ -93,21 +91,28 @@ st.markdown("""
         background-color: transparent !important; 
     }
     .word-span:hover {
-        color: #007bff; /* 호버 시 파란색으로 변경 */
+        color: #007bff;
     }
     .word-selected {
-        color: #007bff; /* 클릭된 단어는 파란색 글씨로만 표시 */
+        color: #007bff; 
         font-weight: bold;
     }
-    .word-punctuation { /* 구두점 스타일 */
+    .word-punctuation {
         padding: 2px 0px;
         margin: 2px 0;
         display: inline-block;
         user-select: none;
     }
     
-    /* 2. 숨겨진 버튼을 완벽하게 가리기 위한 CSS */
-    #hidden-button-container {
+    /* 2. 숨겨진 버튼을 완벽하게 가리기 위한 CSS (최종 버전) */
+    /* key가 'hidden_'으로 시작하는 버튼이 포함된 Streamlit 컨테이너를 타겟팅 */
+    /* Streamlit의 내부 div 구조를 활용하여 숨김을 시도합니다. */
+    div[data-testid="stButton"] button[key^="hidden_"] {
+        display: none !important;
+    }
+
+    /* 버튼이 차지하는 빈 공간 자체를 없애기 위한 CSS (st.empty()에 부여한 ID를 타겟) */
+    #hidden-button-slot {
         display: none !important;
         visibility: hidden !important;
         width: 0 !important;
@@ -124,7 +129,6 @@ st.markdown("""
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка.")
 
 # ❗수정: 단어와 구두점을 모두 포함하는 토큰 리스트 생성
-# 구두점(., ?, !, , 등)과 단어를 모두 분리하여 리스트에 담습니다.
 tokens_with_punct = re.findall(r"(\w+|[^\s\w]+)", text, flags=re.UNICODE)
 # 클릭 대상이 되는 순수 단어만 추출 (중복 제거)
 clickable_words = list(dict.fromkeys([t for t in tokens_with_punct if re.fullmatch(r'\w+', t, flags=re.UNICODE)]))
@@ -145,9 +149,9 @@ with left:
             if tok in st.session_state.selected_words:
                 css = "word-selected"
             
-            # onclick: 숨겨진 버튼의 ID(hidden-trigger-...)를 정확히 타겟팅
+            # ❗ onclick: 숨겨진 버튼의 key를 이용하여 쿼리 선택자로 버튼을 찾아 클릭합니다.
             html_all += f"""
-            <span class="{css}" onclick="document.getElementById('hidden-trigger-{tok}').click();">
+            <span class="{css}" onclick="document.querySelector('button[key=\\'hidden_{tok}\\']').click();">
                 {tok}
             </span>
             """
@@ -174,46 +178,44 @@ with left:
 # 3.2. 숨겨진 버튼 (화면 밖에서 처리)
 # ----------------------------------------
 
-# ❗ CSS로 완벽히 숨겨지는 컨테이너 생성
-st.markdown('<div id="hidden-button-container">', unsafe_allow_html=True)
+# ❗ st.empty()를 사용하여 버튼을 담을 격리된 공간 생성
+hidden_slot = st.empty()
 
-# 숨겨진 버튼은 클릭 가능한 단어(clickable_words)에 대해서만 생성합니다.
-for tok in clickable_words:
-    # 1. Streamlit 버튼 생성 (화면에는 안 보임)
-    clicked = st.button(" ", key=f"key_{tok}") 
+# ❗ st.empty()가 만든 div에 ID를 부여하여 CSS로 완벽히 숨깁니다.
+st.markdown(f"""
+<script>
+    // st.empty()는 가장 최근에 생성된 [data-testid="stEmpty"] 요소를 만듭니다.
+    var empty_divs = document.querySelectorAll('[data-testid="stEmpty"]');
+    if (empty_divs.length > 0) {{
+        // 가장 최근의 st.empty() 컨테이너에 ID를 부여하여 CSS로 숨김
+        empty_divs[empty_divs.length - 1].id = 'hidden-button-slot';
+    }}
+</script>
+""", unsafe_allow_html=True)
 
-    # 2. **버튼에 HTML ID 강제 부여 (작동의 핵심)**
-    st.markdown(f"""
-    <script>
-        var buttons = document.querySelectorAll('button');
-        var lastButton = buttons[buttons.length - 1];
-        
-        if (lastButton && !lastButton.id) {{
-            lastButton.id = 'hidden-trigger-{tok}';
-        }}
-    </script>
-    """, unsafe_allow_html=True)
-    
-    if clicked:
-        # 텍스트 클릭 시 실행되는 Python 로직
-        st.session_state.clicked_word = tok
-        if tok not in st.session_state.selected_words:
-            st.session_state.selected_words.append(tok)
-        
-        # 단어 정보 로드 (중복 로드 방지)
-        lemma = lemmatize_ru(tok)
-        if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != tok:
-            with st.spinner(f"'{tok}'의 정보를 불러오는 중..."):
-                try:
-                    info = fetch_from_gemini(tok, lemma)
-                    # 기본형(lemma)을 키로 저장 (중복 방지)
-                    st.session_state.word_info[lemma] = {**info, "loaded_token": tok} 
-                except Exception as e:
-                    st.error(f"단어 정보 로드 오류: {e}")
-        st.rerun() 
 
-# 숨겨진 컨테이너 닫기
-st.markdown('</div>', unsafe_allow_html=True)
+with hidden_slot:
+    # 이 공간에 버튼을 배치합니다. 이 버튼들은 상단 CSS에 의해 숨겨지고, 공간도 차지하지 않습니다.
+    for tok in clickable_words:
+        # key를 'hidden_'으로 시작하도록 하여 CSS 선택자와 JS querySelector에 걸리게 합니다.
+        clicked = st.button(" ", key=f"hidden_{tok}") 
+
+        if clicked:
+            # 텍스트 클릭 시 실행되는 Python 로직
+            st.session_state.clicked_word = tok
+            if tok not in st.session_state.selected_words:
+                st.session_state.selected_words.append(tok)
+            
+            # 단어 정보 로드 (중복 로드 방지)
+            lemma = lemmatize_ru(tok)
+            if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != tok:
+                with st.spinner(f"'{tok}'의 정보를 불러오는 중..."):
+                    try:
+                        info = fetch_from_gemini(tok, lemma)
+                        st.session_state.word_info[lemma] = {**info, "loaded_token": tok} 
+                    except Exception as e:
+                        st.error(f"단어 정보 로드 오류: {e}")
+            st.rerun() 
 
 # ----------------------------------------
 # 3.3. 단어 상세 정보 (right 컬럼)

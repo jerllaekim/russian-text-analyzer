@@ -101,7 +101,6 @@ text = st.text_area("텍스트를 입력하세요", "Человек идёт п�
 tokens = list(dict.fromkeys(re.findall(r"\w+", text, flags=re.UNICODE)))
 
 left, right = st.columns([2, 1])
-
 with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
 
@@ -190,7 +189,6 @@ with left:
         st.session_state.clicked_word = None
         st.session_state.word_info = {}
         st.rerun()
-
 
 # ---------------------- 오른쪽: 단어 정보 ----------------------
 with right:

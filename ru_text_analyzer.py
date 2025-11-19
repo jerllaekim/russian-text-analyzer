@@ -102,15 +102,19 @@ tokens = list(dict.fromkeys(re.findall(r"\w+", text, flags=re.UNICODE)))
 
 left, right = st.columns([2, 1])
 
-# ---------------------- 왼쪽: 단어 목록 ----------------------
 with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
 
+    # 단어들 가로로 배치하기 위한 HTML 래퍼
+    st.markdown("<div class='word-container'>", unsafe_allow_html=True)
+
     for tok in tokens:
+        # 선택된 단어는 파란색 + 밑줄
         css = "word-span"
         if tok in st.session_state.selected_words:
             css = "word-span word-selected"
 
+        # 사용자에게 보이는 실제 텍스트(span)
         st.markdown(
             f"""
             <span class="{css}" onclick="document.getElementById('btn_{tok}').click();">
@@ -120,18 +124,29 @@ with left:
             unsafe_allow_html=True
         )
 
-        # 숨겨진 버튼이 실제로 상태 변화시킴
-        if st.button(" ", key=f"btn_{tok}", help="", args=None, kwargs=None):
+        # 버튼 UI 완전 숨기기
+        hidden = st.container()
+        with hidden:
+            st.markdown("<div class='hidden-btn'>", unsafe_allow_html=True)
+            clicked = st.button(" ", key=f"btn_{tok}")
+            st.markdown("</div>", unsafe_allow_html=True)
+
+        # 클릭 처리
+        if clicked:
             st.session_state.clicked_word = tok
             if tok not in st.session_state.selected_words:
                 st.session_state.selected_words.append(tok)
             st.rerun()
 
+    st.markdown("</div>", unsafe_allow_html=True)
+
+    # 초기화 버튼
     if st.button("🔄 초기화"):
         st.session_state.selected_words = []
         st.session_state.clicked_word = None
         st.session_state.word_info = {}
         st.rerun()
+
 
 # ---------------------- 오른쪽: 단어 정보 ----------------------
 with right:

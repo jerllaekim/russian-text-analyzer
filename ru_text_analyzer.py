@@ -17,64 +17,57 @@ st.title("러시아어 텍스트 분석기")
 if "clicked_word" not in st.session_state:
     st.session_state.clicked_word = None          # 현재 상세보기 단어(표면형)
 if "selected_words" not in st.session_state:
-    st.session_state.selected_words = []          # 선택된 단어(표면형) 리스트
+    st.session_state.selected_words = []          # 선택된 단어(표면형)
 if "word_info" not in st.session_state:
     st.session_state.word_info = {}              # lemma -> {lemma, ko_meanings}
 
 
 # ─────────────────────────────
-# CSS: 단어 버튼을 텍스트처럼 보이게
+# CSS: 칩 스타일만 최소로
 # ─────────────────────────────
 st.markdown(
     """
 <style>
-/* 단어 버튼용 래퍼 - 일반(검정) */
-div.word-btn-normal > button {
-    border: none !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    padding: 0 4px 2px 0 !important;
-    margin: 0 !important;
-    min-width: 0 !important;
-    color: #000000 !important;
-    font-size: 1rem !important;
+/* 단어 칩 (일반) */
+.word-chip button {
+    border-radius: 999px !important;
+    padding: 2px 10px !important;
+    margin: 3px !important;
+    border: 1px solid #cccccc !important;
+    background-color: #f9f9f9 !important;
+    color: #333333 !important;
+    font-size: 0.9rem !important;
 }
 
-/* 단어 버튼용 래퍼 - 선택됨(파랑) */
-div.word-btn-selected > button {
-    border: none !important;
-    background: transparent !important;
-    box-shadow: none !important;
-    padding: 0 4px 2px 0 !important;
-    margin: 0 !important;
-    min-width: 0 !important;
+/* 선택된 단어 칩 */
+.word-chip-selected button {
+    border-radius: 999px !important;
+    padding: 2px 10px !important;
+    margin: 3px !important;
+    border: 1px solid #1E88E5 !important;
+    background-color: rgba(30, 136, 229, 0.1) !important;
     color: #1E88E5 !important;
-    font-size: 1rem !important;
-    font-weight: 600 !important;
+    font-size: 0.9rem !important;
 }
 
-/* 호버 시 밑줄만 */
-div.word-btn-normal > button:hover,
-div.word-btn-selected > button:hover {
-    text-decoration: underline;
-}
-
-/* 선택한 단어 모음(칩 느낌) */
-div.selected-chip > button {
+/* 선택한 단어 모음 칩 */
+.selected-chip button {
     border-radius: 999px !important;
     padding: 2px 10px !important;
     margin: 3px !important;
     border: 1px solid #1E88E5 !important;
     background-color: rgba(30, 136, 229, 0.06) !important;
     color: #1E88E5 !important;
+    font-size: 0.9rem !important;
 }
-div.selected-chip-active > button {
+.selected-chip-active button {
     border-radius: 999px !important;
     padding: 2px 10px !important;
     margin: 3px !important;
     border: 1px solid #1E88E5 !important;
     background-color: rgba(30, 136, 229, 0.18) !important;
     color: #1E88E5 !important;
+    font-size: 0.9rem !important;
 }
 </style>
 """,
@@ -154,39 +147,41 @@ def fetch_from_gemini(word: str, lemma: str):
 # ─────────────────────────────
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка.")
 
-# 단어 / 문장부호 분리
-tokens = re.findall(r"\w+|[^\w\s]", text, flags=re.UNICODE)
+# 원문 그대로 보여주기 (클릭 X)
+st.subheader("원문 텍스트")
+st.write(text)
+
+# 단어만 추출 (소문자/대문자 포함, 구두점 제외)
+tokens = re.findall(r"\w+", text, flags=re.UNICODE)
+unique_tokens = sorted(set(tokens), key=lambda x: tokens.index(x))  # 등장 순서 유지
+
 
 left, right = st.columns([2, 1], gap="large")
 
 
 # ─────────────────────────────
-# 왼쪽: 텍스트 (텍스트 느낌 버튼, 가로 배열)
+# 왼쪽: 단어 칩 리스트
 # ─────────────────────────────
 with left:
-    st.subheader("텍스트 분석 결과")
-    st.caption("단어(검은 글씨)를 클릭하면 파란색으로 바뀌고, 오른쪽/하단에 정보가 표시됩니다.")
+    st.subheader("단어 목록 (텍스트에서 추출)")
+    st.caption("아래 단어 칩을 클릭하면 오른쪽에 정보가 표시되고, 하단에 누적됩니다.")
 
-    # 핵심: 한 줄에 5개씩만 → 각 칸이 넓어서 글자가 세로로 안 쪼개짐
-    row_size = 5
-    for start in range(0, len(tokens), row_size):
-        row_tokens = tokens[start:start + row_size]
-        cols = st.columns(row_size)
-        for j, tok in enumerate(row_tokens):
-            col = cols[j]
+    if not unique_tokens:
+        st.info("텍스트에서 단어를 찾지 못했습니다.")
+    else:
+        # 칩을 여러 열에 배치 (간격 자연스럽게)
+        cols = st.columns(4)
+        for idx, tok in enumerate(unique_tokens):
+            col = cols[idx % 4]
             with col:
-                if re.match(r"\w+", tok, flags=re.UNICODE):
-                    # 이미 선택된 단어면 파란색, 아니면 검정
-                    wrapper_class = "word-btn-selected" if tok in st.session_state.selected_words else "word-btn-normal"
-                    st.markdown(f'<div class="{wrapper_class}">', unsafe_allow_html=True)
-                    if st.button(tok, key=f"tok_{start}_{j}_{tok}"):
-                        st.session_state.clicked_word = tok
-                        if tok not in st.session_state.selected_words:
-                            st.session_state.selected_words.append(tok)
-                    st.markdown("</div>", unsafe_allow_html=True)
-                else:
-                    # 문장부호는 그냥 출력
-                    st.write(tok)
+                is_selected = tok in st.session_state.selected_words
+                cls = "word-chip-selected" if is_selected else "word-chip"
+                st.markdown(f"<div class='{cls}'>", unsafe_allow_html=True)
+                if st.button(tok, key=f"wordchip_{idx}_{tok}"):
+                    st.session_state.clicked_word = tok
+                    if tok not in st.session_state.selected_words:
+                        st.session_state.selected_words.append(tok)
+                st.markdown("</div>", unsafe_allow_html=True)
 
     with st.expander("초기화"):
         if st.button("🔄 선택 & 누적 데이터 초기화"):
@@ -217,7 +212,6 @@ with right:
             ko_meanings = []
             examples = []
 
-        # word_info에 누적
         if ko_meanings:
             st.session_state.word_info[lemma] = {
                 "lemma": lemma,
@@ -249,7 +243,7 @@ with right:
         rnc_url = f"https://ruscorpora.ru/search?search={lemma_for_link}"
         st.markdown(f"[Multitran에서 검색]({mt_url})  \n[러시아 국립 코퍼스에서 검색]({rnc_url})")
     else:
-        st.info("왼쪽 텍스트에서 단어를 클릭하면 여기 정보가 나타납니다.")
+        st.info("왼쪽 단어 목록에서 하나를 클릭하면 여기 정보가 나타납니다.")
 
 
 # ─────────────────────────────
@@ -263,24 +257,23 @@ cw = st.session_state.clicked_word
 word_info = st.session_state.word_info
 
 if not selected and not word_info:
-    st.caption("아직 클릭해서 누적된 단어가 없습니다. 위 텍스트에서 단어를 클릭해보세요.")
+    st.caption("아직 클릭해서 누적된 단어가 없습니다. 위 단어 목록에서 단어를 선택해보세요.")
 else:
-    # 칩 형태로 표시 (그냥 시각용)
     if selected:
+        st.caption("클릭하여 다시 상세 정보를 볼 수 있습니다.")
         cols = st.columns(min(4, len(selected)))
         for idx, w in enumerate(selected):
             col = cols[idx % len(cols)]
             with col:
                 if w == cw:
                     st.markdown("<div class='selected-chip-active'>", unsafe_allow_html=True)
-                    st.button(f"✅ {w}", key=f"chip_{w}_active")
-                    st.markdown("</div>", unsafe_allow_html=True)
                 else:
                     st.markdown("<div class='selected-chip'>", unsafe_allow_html=True)
-                    st.button(w, key=f"chip_{w}")
-                    st.markdown("</div>", unsafe_allow_html=True)
+                if st.button(w, key=f"selectedchip_{w}"):
+                    st.session_state.clicked_word = w
+                    st.rerun()
+                st.markdown("</div>", unsafe_allow_html=True)
 
-    # lemma / 한국어 뜻 표 + CSV
     if word_info:
         rows = []
         for lemma, info in word_info.items():

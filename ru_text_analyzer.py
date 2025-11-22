@@ -298,13 +298,65 @@ with right:
                 if ko_meanings and ko_meanings[0] == "JSON 파싱 오류":
                      st.error("Gemini API 정보 오류.")
                 elif ko_meanings and ko_meanings[0].startswith(f"'{current_token}'의 API 키 없음"):
- # ---------------------- 7. 저작권 표시 (페이지 최하단) ----------------------
-                    st.markdown("---")
-                    st.markdown("""
-                        <div class="footer">
-                        이 페이지는 연세대학교 노어노문학과 25-2 러시아어 교육론 5팀의 프로젝트 결과물**입니다. 
-                        <br>
-                        본 페이지의 내용, 기능 및 데이터를 학습 목적 이외의 용도로 무단 복제, 배포, 상업적 이용할 경우, 
-                        관련 법령에 따라 민사상 손해배상 청구 및 형사상 처벌을 받을 수 있습니다.
-                            </div>
-                                """, unsafe_allow_html=True)
+                     st.warning("API 키가 설정되지 않아 예문을 불러올 수 없습니다.")
+                else:
+                    st.info("예문 정보가 없습니다.")
+        else:
+            st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
+            
+    else:
+        st.info("검색창에 단어를 입력하면 여기에 상세 정보가 표시됩니다.")
+
+# ---------------------- 6. 하단: 누적 목록 + CSV ----------------------
+st.divider()
+st.subheader("📝 선택한 단어 모음 (기본형 기준)")
+
+selected = st.session_state.selected_words
+word_info = st.session_state.word_info
+
+if word_info:
+    rows = []
+    processed_lemmas = set()
+    
+    for tok in selected:
+        lemma = lemmatize_ru(tok)
+        if lemma not in processed_lemmas and lemma in word_info:
+            info = word_info[lemma]
+            if info.get("ko_meanings") and info["ko_meanings"][0] != "JSON 파싱 오류":
+                pos = info.get("pos", "품사") 
+                
+                # 기본형 형태 결정
+                if pos == '동사' and info.get("aspect_pair"):
+                    imp = info['aspect_pair'].get('imp', lemma)
+                    perf = info['aspect_pair'].get('perf', '정보 없음')
+                    base_form = f"{imp} / {perf}"
+                else:
+                    base_form = lemma
+
+                # 품사 정보를 뜻 앞에 (품사) 형태로 추가
+                short = "; ".join(info["ko_meanings"][:2])
+                short = f"({pos}) {short}" 
+
+                rows.append({"기본형": base_form, "대표 뜻": short})
+                processed_lemmas.add(lemma)
+
+    if rows:
+        df = pd.DataFrame(rows)
+        st.dataframe(df, hide_index=True)
+
+        csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
+        st.download_button("💾 CSV로 저장", csv_bytes, "russian_words.csv", "text/csv")
+    else:
+        st.info("선택된 단어의 정보가 로드 중이거나, 표시할 정보가 없습니다.")
+
+
+# ---------------------- 7. 저작권 표시 (페이지 최하단) ----------------------
+st.markdown("---")
+st.markdown("""
+<div class="footer">
+    이 페이지는 연세대학교 노어노문학과 25-2 러시아어 교육론 5팀의 프로젝트 결과물입니다. 
+    <br>
+    본 페이지의 내용, 기능 및 데이터를 학습 목적 이외의 용도로 무단 복제, 배포, 상업적 이용할 경우, 
+    관련 법령에 따라 민사상 손해배상 청구 및 형사상 처벌을 받을 수 있습니다.
+</div>
+""", unsafe_allow_html=True)

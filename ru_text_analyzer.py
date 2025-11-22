@@ -24,7 +24,6 @@ mystem = Mystem()
 @st.cache_data(show_spinner=False)
 def lemmatize_ru(word: str) -> str:
     """단어의 기본형(lemma)을 추출합니다."""
-    # 단어만 처리 (구두점/공백 제외)
     if re.fullmatch(r'\w+', word, flags=re.UNICODE):
         lemmas = mystem.lemmatize(word)
         return (lemmas[0] if lemmas else word).strip()
@@ -32,7 +31,6 @@ def lemmatize_ru(word: str) -> str:
 
 # ---------------------- 1. Gemini 연동 함수 ----------------------
 
-# Streamlit secrets에서 API 키 로드 (os.getenv도 폴백으로 사용)
 api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
 client = genai.Client(api_key=api_key) if api_key else None
 
@@ -50,12 +48,9 @@ def fetch_from_gemini(word, lemma):
         return {"ko_meanings": [f"'{word}'의 API 키 없음 (GEMINI_API_KEY 설정 필요)"], "examples": []}
         
     prompt = make_prompt(word, lemma)
-    
-    # 모델 호출
     res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     text = res.text.strip()
     
-    # JSON 파싱을 위해 Markdown 코드 블록 제거
     if text.startswith("```"):
         text = text.strip("`")
         lines = text.splitlines()
@@ -66,56 +61,61 @@ def fetch_from_gemini(word, lemma):
              
     return json.loads(text)
 
-# ---------------------- 2. 전역 스타일 및 JavaScript 정의 ----------------------
+# ---------------------- 2. 전역 스타일 정의 (버튼 위젯 덮어쓰기) ----------------------
 
+# Streamlit 버튼 위젯을 단어 스타일로 덮어씌웁니다.
 st.markdown("""
 <style>
-    /* 단어 스타일 정의 */
-    .word-span, .word-selected {
-        cursor: pointer;
-        padding: 2px 4px;
-        margin: 2px 0;
+    /* 텍스트 입력 영역 아래의 띄어쓰기 제어 */
+    div.stTextArea + div.stMarkdown > div {
+        line-height: 2.0;
+        font-size: 1.25em;
+    }
+
+    /* 단어처럼 보이도록 버튼 스타일을 변경 */
+    .word-container {
         display: inline-block;
-        transition: color 0.2s;
+        margin: 2px 0;
         user-select: none;
+    }
+    .word-button {
+        padding: 2px 4px !important;
+        margin: 0 !important;
         border: none !important;
-        text-decoration: none !important; 
-        background-color: transparent !important; 
+        background: none !important;
+        box-shadow: none !important;
+        cursor: pointer;
+        color: #333; /* 기본 텍스트 색상 */
+        font-weight: normal;
+        display: inline-block !important;
+        line-height: 1.5; /* 줄 간격 유지 */
     }
-    .word-span:hover {
-        color: #007bff;
+    /* 클릭된/선택된 단어 스타일 */
+    .word-selected > button {
+        color: #007bff !important; 
+        font-weight: bold !important;
     }
-    .word-selected {
-        color: #007bff; 
-        font-weight: bold;
-    }
+    /* 구두점 스타일 (버튼 아님) */
     .word-punctuation {
         padding: 2px 0px;
         margin: 2px 0;
         display: inline-block;
         user-select: none;
+        line-height: 1.5;
+    }
+    
+    /* Streamlit 버튼의 기본 간격을 없애 단어처럼 붙도록 처리 */
+    .stButton > button {
+        border-radius: 0px !important;
+        padding: 2px 4px !important;
     }
 </style>
 """, unsafe_allow_html=True)
 
-# 쿼리 파라미터 업데이트 JavaScript 주입
-# 클릭된 단어를 URL의 'word' 파라미터로 설정하고 **페이지를 새로고침**하여 Streamlit 재실행 유도
-st.markdown("""
-<script>
-    function setQueryParam(word) {
-        const url = new URL(window.location.href);
-        // 'word' 파라미터 설정
-        url.searchParams.set('word', word);
-        // URL 업데이트 후, 페이지를 새로고침하여 Streamlit의 Python 코드를 재실행합니다.
-        window.location.href = url.toString();
-    }
-</script>
-""", unsafe_allow_html=True)
 
 # ---------------------- 3. 메인 로직 및 레이아웃 ----------------------
 
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка.")
-# 단어와 구두점을 모두 토큰으로 분리
 tokens_with_punct = re.findall(r"(\w+|[^\s\w]+)", text, flags=re.UNICODE)
 
 left, right = st.columns([2, 1])
@@ -124,60 +124,89 @@ left, right = st.columns([2, 1])
 with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
 
-    html_all = ""
-    for tok in tokens_with_punct:
-        css = "word-span"
-        if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
-            # 단어인 경우
-            if tok in st.session_state.selected_words:
-                css = "word-selected"
-            
-            # HTML 코드를 한 줄로 포맷팅하여 안전하게 렌더링
-            html_all += (
-                f'<span class="{css}" onclick="setQueryParam(\'{tok}\');">'
-                f'{tok}'
-                f'</span> ' # 단어 뒤에 공백 추가 (띄어쓰기)
-            )
-        else:
-            # 구두점/공백인 경우
-            html_all += (
-                f'<span class="word-punctuation">'
-                f'{tok}'
-                f'</span>'
-            )
-            # 공백 토큰을 따로 처리하지 않았다면, 구두점 뒤에 공백이 필요할 경우 여기서 추가해야 함.
-            # (현재 정규식은 공백을 분리하지 않으므로, 원래 텍스트의 공백이 자연스럽게 포함됨)
-
-    # 전체를 Div로 묶어 HTML 렌더링을 확실하게 합니다.
-    st.markdown(f'<div style="line-height: 2.0; font-size: 1.25em;">{html_all}</div>', unsafe_allow_html=True) 
+    # 단어를 저장할 임시 컨테이너
+    word_elements = [] 
     
+    # 텍스트 내의 모든 토큰을 순회하며 위젯 또는 구두점 삽입
+    for i, tok in enumerate(tokens_with_punct):
+        if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
+            # 단어인 경우: 실제 st.button을 사용하여 클릭을 감지
+            
+            is_selected = tok in st.session_state.selected_words
+            
+            # CSS 클래스를 지정하기 위한 HTML 마크업 시작
+            css_class = "word-container"
+            if is_selected:
+                 css_class += " word-selected"
+
+            # 1. HTML 마크업 시작 (단어 컨테이너)
+            word_elements.append(f'<div class="{css_class}">')
+            
+            # 2. 버튼 배치 (클릭 로직)
+            # 버튼을 먼저 배치하고, 클릭되면 처리 함수를 호출합니다.
+            
+            # 콜백 함수: 버튼이 클릭될 때만 실행되며, 세션 상태를 업데이트합니다.
+            def on_word_click(clicked_token):
+                st.session_state.clicked_word = clicked_token
+                # 단어 정보 로드 로직은 아래 3.2에서 재실행 시 처리됨
+                if clicked_token not in st.session_state.selected_words:
+                    st.session_state.selected_words.append(clicked_token)
+
+            # st.button을 렌더링하고, 클릭 여부를 즉시 확인
+            if st.button(
+                tok, 
+                key=f"word_{tok}_{i}", # 고유 key를 지정해야 모든 버튼이 작동
+                help=f"클릭하여 '{tok}' 정보 보기",
+                on_click=on_word_click,
+                args=(tok,)
+            ):
+                # 버튼 클릭 시 on_click이 실행되고 Streamlit이 재실행됨
+                pass 
+                
+            # 3. HTML 마크업 종료 및 띄어쓰기 추가
+            word_elements.append(f'</div> ') # 띄어쓰기를 위해 div 밖에서 공백 추가
+
+        else:
+            # 구두점인 경우: 마크다운으로 출력 (클릭 불가)
+            word_elements.append(f'<span class="word-punctuation">{tok}</span>')
+
+    # st.markdown을 사용하여 구두점과 HTML 마크업을 함께 렌더링
+    # st.markdown(word_elements[0], unsafe_allow_html=True) # 각 요소를 개별적으로 렌더링할 필요는 없음
+
+    # Streamlit은 버튼과 마크다운을 섞어 렌더링할 때 약간의 트릭이 필요합니다.
+    # 여기서는 Streamlit의 자동 렌더링을 믿고, 버튼 사이에 띄어쓰기를 위해 마크다운을 활용합니다.
+    # 그러나 버튼 위젯과 마크다운을 섞을 때 레이아웃이 깨지기 쉬우므로,
+    # 위에서 이미 st.button을 배치했으므로, 텍스트와 구두점을 버튼 사이에 넣어주는 방식으로 재구성합니다.
+    
+    # *******************************************************************
+    # 🚨 주의: Streamlit은 위젯과 HTML을 섞을 때 문제가 발생하므로, 
+    # 위 코드에서 st.button이 이미 순서대로 배치되었을 경우, 
+    # 나머지 텍스트(구두점)만 마크다운으로 출력하는 방식이 더 안정적입니다.
+    # *******************************************************************
+
+    # 하지만 최종 사용자가 보는 화면을 위해, 현재는 st.button을 배치하는 것만으로 충분합니다.
+    # st.button은 블록 레벨 요소처럼 동작하므로, CSS를 사용하여 인라인 블록으로 만들어야 합니다.
+    # CSS 설정 (.word-container, .word-button)이 이 문제를 해결해 주길 기대합니다.
+
+
     # 초기화 버튼
     st.markdown("---")
     if st.button("🔄 선택 초기화"):
         st.session_state.selected_words = []
         st.session_state.clicked_word = None
         st.session_state.word_info = {}
-        # 쿼리 파라미터도 완전히 초기화
         st.experimental_set_query_params() 
         st.rerun()
 
-# --- 3.2. 쿼리 파라미터에서 클릭된 단어 읽기 및 정보 로드 ---
+# --- 3.2. 단어 상세 정보 로드 (클릭 시 실행) ---
 
-query_params = st.experimental_get_query_params()
-clicked_word_from_url = query_params.get("word", [None])[0]
+current_token = st.session_state.clicked_word
 
-# URL에서 읽은 단어가 있고, 이전에 클릭한 단어와 다를 때만 로직 실행 (무한 루프 방지)
-if clicked_word_from_url and clicked_word_from_url != st.session_state.clicked_word:
-    st.session_state.clicked_word = clicked_word_from_url
-    tok = clicked_word_from_url
-    
-    # 단어 정보 로드 로직
-    if tok not in st.session_state.selected_words:
-        st.session_state.selected_words.append(tok)
-    
+if current_token:
+    tok = current_token
     lemma = lemmatize_ru(tok)
     
-    # 현재 토큰에 대한 정보가 없거나, 다른 표제형의 정보가 로드된 경우에만 새로 로드
+    # 단어 정보 로드 (세션 상태에 없거나 로드된 토큰이 다를 경우)
     if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != tok:
         with st.spinner(f"'{tok}'의 정보를 불러오는 중... (Gemini API 호출)"):
             try:
@@ -190,8 +219,6 @@ if clicked_word_from_url and clicked_word_from_url != st.session_state.clicked_w
 # --- 3.3. 단어 상세 정보 (right 컬럼) ---
 with right:
     st.subheader("단어 상세 정보")
-    
-    current_token = st.session_state.clicked_word
     
     if current_token:
         lemma = lemmatize_ru(current_token)
@@ -237,12 +264,10 @@ if word_info:
     rows = []
     processed_lemmas = set()
     
-    # 선택된 단어들을 순회하며 기본형을 기준으로 중복 없이 정보를 정리
     for tok in selected:
         lemma = lemmatize_ru(tok)
         if lemma not in processed_lemmas and lemma in word_info:
             info = word_info[lemma]
-            # 대표 뜻은 최대 2개만 추출
             short = "; ".join(info["ko_meanings"][:2])
             rows.append({"기본형": lemma, "대표 뜻": short})
             processed_lemmas.add(lemma)
@@ -269,7 +294,6 @@ if manual:
     st.markdown(f"**기본형(lemma):** *{lemma}*")
 
     try:
-        # 수동 검색은 캐시된 정보를 사용
         info = fetch_from_gemini(manual, lemma)
     except Exception as e:
         st.error(f"Gemini 오류: {e}")

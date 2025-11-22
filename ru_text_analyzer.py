@@ -33,8 +33,9 @@ def lemmatize_ru(word: str) -> str:
 api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
 client = genai.Client(api_key=api_key) if api_key else None
 
-SYSTEM_PROMPT = "너는 러시아어-한국어 학습을 돕는 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 제공한다. 반드시 JSON만 출력한다."
+SYSTEM_PROMPT = "너는 러시아어-한국어 학습을 돕는 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 최대 두 개만 제공한다. 반드시 JSON만 출력한다."
 def make_prompt(word, lemma):
+    # 예문을 최대 2개만 요청하도록 프롬프트 수정
     return f"""{SYSTEM_PROMPT}
 단어: {word}
 기본형: {lemma}
@@ -58,21 +59,31 @@ def fetch_from_gemini(word, lemma):
         elif lines:
              text = "\n".join(lines)
              
-    return json.loads(text)
+    try:
+        data = json.loads(text)
+        # 예문이 3개 이상일 경우 2개로 제한
+        if 'examples' in data and len(data['examples']) > 2:
+            data['examples'] = data['examples'][:2]
+        return data
+    except json.JSONDecodeError:
+        st.error(f"Gemini 응답을 JSON으로 디코딩하는 데 실패했습니다: {text[:100]}...")
+        return {"ko_meanings": ["응답 오류"], "examples": []}
 
-# ---------------------- 2. 전역 스타일 정의 (버튼 UI 및 색상 강제) ----------------------
+
+# ---------------------- 2. 전역 스타일 정의 (버튼 UI 및 간격 최소화) ----------------------
 
 st.markdown("""
 <style>
-    /* 1. 단어 버튼 스타일: 버튼 모양 완전히 제거 및 색상 설정 */
+    /* 1. 단어 버튼 스타일: 버튼 모양 완전히 제거 및 간격 최소화 */
+    /* stButton 내부 button 요소에 직접 스타일 적용 */
     div.stButton > button {
-        padding: 2px 4px !important;
+        padding: 2px 0px !important; /* 내부 패딩 최소화 */
         margin: 0 !important;
         border: none !important;
-        background: none !important; /* 배경 제거 */
-        box-shadow: none !important; /* 그림자 제거 */
+        background: none !important; 
+        box-shadow: none !important; 
         cursor: pointer;
-        color: #333 !important; /* 기본 텍스트 색상 */
+        color: #333 !important; 
         font-weight: normal;
         height: auto !important;
         line-height: 1.5 !important;
@@ -80,37 +91,41 @@ st.markdown("""
         text-align: left !important;
     }
     
-    /* 2. 클릭된 단어 색상 유지 (선택된 단어는 파란색) */
-    /* stButton의 상위 Div에 Word-selected 클래스를 강제로 적용하고, 내부 버튼 색상을 변경 */
-    .word-selected > div > button {
+    /* 2. 클릭된 단어 색상 유지 (파란색) */
+    /* word-selected 클래스가 버튼의 텍스트를 파란색으로 만듭니다. */
+    .word-selected > div > button { 
         color: #007bff !important; 
         font-weight: bold !important;
     }
     
-    /* 3. 구두점 스타일 (단어와 크기 맞추기) */
+    /* 3. 구두점 스타일 */
     .word-punctuation {
         padding: 2px 0px;
-        margin: 2px 0;
+        margin: 0; /* 구두점 마진 제거 */
         display: inline-block;
         user-select: none;
         line-height: 1.5;
-        font-size: 1.1em; /* 단어 버튼과 비슷한 크기로 조정 */
+        font-size: 1.1em;
     }
     
-    /* 4. st.columns 컨테이너 내의 간격 조정 (가로 나열 시도) */
+    /* 4. st.columns 컨테이너 내의 간격 조정 (가로 나열 강제) */
+    /* 단어 간 간격을 0으로 만들고, 띄어쓰기는 단어 자체의 버튼 레이블에 포함시키거나,
+       구두점 토큰으로 처리하여 시각적으로 최소화합니다. */
     div[data-testid^="stHorizontalBlock"] {
-        flex-wrap: wrap !important; /* 단어가 많아지면 줄바꿈 허용 */
-        gap: 0px 5px !important; /* 컬럼 간격 최소화 */
+        flex-wrap: wrap !important;
+        gap: 0px 0px !important; /* 컬럼 간격을 0으로 설정하여 단어를 붙임 */
+        margin: 0 !important;
     }
-
 </style>
 """, unsafe_allow_html=True)
 
 
 # ---------------------- 3. 메인 로직 및 레이아웃 ----------------------
 
-text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка.")
-tokens_with_punct = re.findall(r"(\w+|[^\s\w]+)", text, flags=re.UNICODE)
+text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка. Хорошо.")
+# 공백(띄어쓰기)과 구두점을 토큰으로 분리하여 정확히 배치
+tokens_with_punct = re.findall(r"(\w+|[^\s\w]+|\s+)", text, flags=re.UNICODE)
+tokens_with_punct = [t for t in tokens_with_punct if t.strip()] # 빈 토큰 제거
 
 left, right = st.columns([2, 1])
 
@@ -125,9 +140,10 @@ with left:
             st.session_state.selected_words.append(clicked_token)
 
     # st.columns를 사용하여 단어와 구두점을 가로로 나열
-    # Streamlit에서 인라인 요소를 강제하는 가장 안정적인 방법 중 하나입니다.
+    # 이 방식은 Streamlit에서 인라인 레이아웃을 보장하는 가장 확실한 방법입니다.
     
-    cols = st.columns(len(tokens_with_punct)) # 토큰 개수만큼 컬럼 생성
+    # 토큰 개수만큼 컬럼을 생성하고 간격 최소화 CSS를 적용
+    cols = st.columns(len(tokens_with_punct)) 
 
     for i, tok in enumerate(tokens_with_punct):
         with cols[i]:
@@ -135,15 +151,16 @@ with left:
                 # 단어인 경우: st.button 사용
                 is_selected = tok in st.session_state.selected_words
                 
-                # CSS 클래스를 st.button의 상위 컨테이너에 적용하기 위한 트릭
-                # Streamlit 위젯은 자체 Div에 래핑되므로, 이 래퍼에 클래스를 삽입합니다.
+                # CSS 클래스를 버튼의 상위 Div에 적용하기 위한 래퍼 HTML 생성
+                # Streamlit은 st.button을 자체 Div로 래핑하므로, 래퍼 위에 래퍼를 씌워야 합니다.
                 
-                # 주의: st.button은 텍스트를 인수로 받으므로, 이 텍스트로 버튼을 만듭니다.
+                # HTML 래퍼: 이 래퍼에 word-selected 클래스를 적용하고, st.button을 배치합니다.
+                # 그러나 st.button은 Python 함수 호출이므로, HTML과 섞이지 않도록 분리합니다.
                 
-                button_html = f'<div class="{"word-selected" if is_selected else ""}"></div>'
-                # st.markdown(button_html, unsafe_allow_html=True) # HTML 삽입
-
-                # st.button을 렌더링
+                # 임시: st.button이 이미 순서대로 배치되고 있으므로,
+                # CSS에 의존하여 버튼의 부모 Div에 스타일이 적용되도록 합니다.
+                
+                # st.button을 렌더링하고, 클릭 시 로직 실행
                 st.button(
                     tok, 
                     key=f"word_{tok}_{i}", # 고유 key
@@ -151,12 +168,25 @@ with left:
                     args=(tok,)
                 )
                 
-                # CSS 클래스를 버튼 컨테이너에 동적으로 적용하는 Javascript 트릭이 필요하지만,
-                # Streamlit 클라우드 환경에서 JS 삽입은 불안정합니다. 
-                # 여기서는 버튼을 출력한 후, CSS가 버튼 내부의 색상을 변경하도록 의존합니다.
-
+                # 파란색 글씨화를 위해 버튼이 출력된 후 CSS 클래스를 동적으로 적용하는 트릭이 필요하지만,
+                # 현재는 **CSS 선택자를 이용해 글자색을 강제**하는 방식으로 해결을 시도합니다.
+                # 클릭된 단어의 key를 이용해 Streamlit이 재실행될 때, CSS 클래스가 재적용됩니다.
+                if is_selected:
+                    st.markdown(
+                        f"""
+                        <script>
+                            // 해당 버튼을 포함하는 stButton 컨테이너를 찾아 word-selected 클래스 적용
+                            const button = document.querySelector('[data-testid="stButton"] button[key="word_{tok}_{i}"]');
+                            if (button && button.parentElement) {{
+                                button.parentElement.parentElement.classList.add('word-selected');
+                            }}
+                        </script>
+                        """, 
+                        unsafe_allow_html=True
+                    )
+            
             else:
-                # 구두점인 경우: st.markdown으로 출력
+                # 구두점 또는 공백인 경우: st.markdown으로 출력
                 st.markdown(f'<span class="word-punctuation">{tok}</span>')
 
 
@@ -201,6 +231,7 @@ with right:
             st.divider()
 
             ko_meanings = info.get("ko_meanings", [])
+            # 예문 개수 제한은 이미 fetch_from_gemini에서 처리됨
             examples = info.get("examples", [])
 
             if ko_meanings:

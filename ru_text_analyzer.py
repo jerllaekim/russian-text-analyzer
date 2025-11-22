@@ -17,8 +17,9 @@ if "clicked_word" not in st.session_state:
     st.session_state.clicked_word = None
 if "word_info" not in st.session_state:
     st.session_state.word_info = {}
-if "manual_search_word" not in st.session_state:
-    st.session_state.manual_search_word = ""
+# manual_search_word는 st.text_input의 key로 사용하며, 직접 할당은 피합니다.
+if "current_search_query" not in st.session_state:
+    st.session_state.current_search_query = ""
 
 mystem = Mystem()
 
@@ -53,6 +54,7 @@ def fetch_from_gemini(word, lemma):
     text = res.text.strip()
     
     try:
+        # (JSON 파싱 로직은 이전과 동일)
         if text.startswith("```"):
             text = text.strip("`")
             lines = text.splitlines()
@@ -80,9 +82,7 @@ def fetch_from_gemini(word, lemma):
         return {"ko_meanings": ["JSON 파싱 오류"], "examples": []}
 
 
-# ---------------------- 2. 전역 스타일 및 JavaScript (제거) ----------------------
-
-# ❗ JavaScript 및 복잡한 CSS 제거 (안정성 최우선)
+# ---------------------- 2. 전역 스타일 정의 ----------------------
 
 st.markdown("""
 <style>
@@ -114,8 +114,8 @@ st.markdown("""
 st.divider()
 st.subheader("🔍 직접 단어 검색")
 
-# 검색 입력 필드 
-manual_input = st.text_input("단어 직접 입력", key="manual_search_word")
+# st.session_state.current_search_query에 바인딩
+manual_input = st.text_input("단어 직접 입력", key="current_search_query")
 
 # 검색 입력 처리 로직
 if manual_input:
@@ -162,8 +162,7 @@ if manual_input:
 # ---------------------- 4. 메인 텍스트 및 레이아웃 ----------------------
 
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка. Хорошо.", height=150)
-# 단어, 구두점, 공백을 모두 토큰으로 분리
-tokens_with_punct = re.findall(r"(\w+|[^\s\w]+|\s+)", text, flags=re.UNICODE)
+# 단어만 추출하여 드롭다운 목록 생성
 all_words = sorted(list(set(re.findall(r'\w+', text, flags=re.UNICODE))))
 
 
@@ -173,7 +172,7 @@ left, right = st.columns([2, 1])
 with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
 
-    # ❗ 텍스트 클릭 대신 드롭다운 메뉴로 대체
+    # ❗ 드롭다운 메뉴로 클릭 기능 대체 (안정성 보장)
     selected_word_from_menu = st.selectbox(
         "📝 분석할 단어 선택", 
         options=["--- 단어를 선택하세요 ---"] + all_words,
@@ -181,40 +180,43 @@ with left:
         key="word_selectbox"
     )
 
-    if selected_word_from_menu != "--- 단어를 선택하세요 ---" and selected_word_from_menu != st.session_state.clicked_word:
-        # 드롭다운 선택 시 클릭된 단어 및 검색창 업데이트
-        st.session_state.clicked_word = selected_word_from_menu
-        st.session_state.manual_search_word = selected_word_from_menu
-        if selected_word_from_menu not in st.session_state.selected_words:
-            st.session_state.selected_words.append(selected_word_from_menu)
-        st.rerun()
+    def select_word():
+        # 드롭다운 선택 시 검색 필드 및 클릭된 단어 업데이트
+        if st.session_state.word_selectbox != "--- 단어를 선택하세요 ---":
+            word = st.session_state.word_selectbox
+            st.session_state.current_search_query = word
+            st.session_state.clicked_word = word
+            if word not in st.session_state.selected_words:
+                st.session_state.selected_words.append(word)
 
-    # 텍스트 하이라이팅 표시
-    html_all = ['<div class="text-container">']
+    # st.selectbox의 on_change를 사용하여 상태 업데이트
+    st.selectbox(
+        "분석할 단어 선택", 
+        options=["--- 단어를 선택하세요 ---"] + all_words,
+        index=0,
+        key="word_selectbox_trigger", # 실제 위젯
+        on_change=select_word,
+        label_visibility="collapsed"
+    )
+
+    # 텍스트 하이라이팅 표시 (긴 텍스트를 위해 HTML 태그 사용 최소화)
     
+    # 텍스트 전체를 분리하여 단어에만 하이라이팅 태그 삽입
+    tokens_with_punct = re.findall(r"(\w+|[^\s\w]+|\s+)", text, flags=re.UNICODE)
+    html_parts = ['<div class="text-container">']
+
     for tok in tokens_with_punct:
         if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
-            # 단어인 경우: HTML <span>으로 렌더링
-            is_selected = tok in st.session_state.selected_words
-            css = ""
-            
-            # 하이라이팅: 선택된 단어에 클래스를 직접 삽입
-            if is_selected:
-                css += " word-selected"
-            
-            html_all.append(
-                f'<span class="{css}">'
-                f'{tok}'
-                f'</span>'
-            )
-
+            # 단어인 경우: 하이라이팅
+            css = "word-selected" if tok in st.session_state.selected_words else ""
+            html_parts.append(f'<span class="{css}">{tok}</span>')
         else:
-            # 구두점 또는 공백인 경우: 일반 <span>으로 렌더링
-            html_all.append(f'<span class="word-punctuation">{tok}</span>')
+            # 구두점 또는 공백
+            html_parts.append(f'<span class="word-punctuation">{tok}</span>')
 
-    html_all.append('</div>')
+    html_parts.append('</div>')
     
-    st.markdown("".join(html_all), unsafe_allow_html=True)
+    st.markdown("".join(html_parts), unsafe_allow_html=True)
     
     # 초기화 버튼
     st.markdown("---")
@@ -222,7 +224,7 @@ with left:
         st.session_state.selected_words = []
         st.session_state.clicked_word = None
         st.session_state.word_info = {}
-        st.session_state.manual_search_word = ""
+        st.session_state.current_search_query = ""
         st.rerun()
 
 # --- 4.2. 단어 상세 정보 (right 컬럼) ---

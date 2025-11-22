@@ -79,34 +79,43 @@ def fetch_from_gemini(word, lemma):
         st.error(f"Gemini 응답을 JSON으로 디코딩하는 데 실패했습니다. 원본 텍스트 시작: {text[:100]}...")
         return {"ko_meanings": ["JSON 파싱 오류"], "examples": []}
 
+# ---------------------- 2. 전역 스타일 및 JavaScript 정의 (쿼리 파라미터 기반) ----------------------
 
-# ---------------------- 2. 전역 스타일 정의 (버튼 UI 제거 및 가로 나열 강제) ----------------------
+# JavaScript: 단어 클릭 시 URL 쿼리 파라미터를 변경하여 Streamlit 재실행 유도
+st.markdown("""
+<script>
+    function setQueryParam(word) {
+        const url = new URL(window.location.href);
+        // 'word' 파라미터 설정
+        url.searchParams.set('word', word);
+        // URL 업데이트 후, 페이지를 새로고침하여 Streamlit의 Python 코드를 재실행합니다. (클릭 보장)
+        window.location.href = url.toString();
+    }
+</script>
+""", unsafe_allow_html=True)
 
 st.markdown("""
 <style>
-    /* 1. 버튼 UI 완전히 제거 */
-    div.stButton > button {
-        padding: 0px 0px !important; /* 패딩 제거 */
-        margin: 0 !important;
-        border: none !important;
-        background: none !important; /* 배경 제거 */
-        box-shadow: none !important; /* 그림자 제거 */
+    /* 1. 단어 스타일 (클릭 가능) */
+    .word-span {
         cursor: pointer;
-        color: #333 !important; /* 기본 텍스트 색상 */
-        font-weight: normal;
-        height: auto !important;
-        line-height: 1.5 !important;
-        white-space: nowrap;
-        text-align: left !important;
-        /* 단어처럼 보이도록 폰트 크기 조정 */
-        font-size: 1.25em; 
+        padding: 0px 0px;
+        margin: 0px 0px;
+        display: inline-block;
+        transition: color 0.2s;
+        user-select: none;
+        white-space: pre; 
+        font-size: 1.25em;
+    }
+    .word-span:hover {
+        color: #007bff;
+        text-decoration: underline;
     }
     
-    /* 2. 클릭된 단어 색상 유지 (파란색) */
-    /* st.button을 감싸는 div에 style이 적용되어야 합니다. */
-    div[data-testid^="stColumn"] > div > div.stButton > button { 
-        /* 기본 상태 */
-        color: #333 !important;
+    /* 2. 파란색 글씨화 (선택/검색된 단어) */
+    .word-selected {
+        color: #007bff !important; 
+        font-weight: bold;
     }
     
     /* 3. 구두점 스타일 */
@@ -117,28 +126,57 @@ st.markdown("""
         user-select: none;
         white-space: pre;
         font-size: 1.25em;
-        line-height: 1.5;
     }
-
-    /* 4. st.columns 컨테이너 간격 최소화 (가로 나열) */
-    div[data-testid^="stHorizontalBlock"] {
-        flex-wrap: wrap !important;
-        gap: 0px 0px !important; /* 컬럼 간격을 0으로 설정하여 단어를 붙임 */
-        margin: 0 !important;
+    
+    /* 4. 전체 텍스트 레이아웃 */
+    .text-container {
+        line-height: 2.0;
+        margin-bottom: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
 
 
-# ---------------------- 3. 직접 단어 검색 (상단) 및 처리 로직 ----------------------
+# ---------------------- 3. 쿼리 파라미터에서 클릭된 단어 읽기 및 정보 로드 ----------------------
+
+query_params = st.experimental_get_query_params()
+clicked_word_from_url = query_params.get("word", [None])[0]
+
+# URL에서 읽은 단어가 있고, 이전에 클릭한 단어와 다를 때만 로직 실행
+if clicked_word_from_url and clicked_word_from_url != st.session_state.clicked_word:
+    st.session_state.clicked_word = clicked_word_from_url
+    tok = clicked_word_from_url
+    
+    # 단어 정보 로드 로직
+    if tok not in st.session_state.selected_words:
+        st.session_state.selected_words.append(tok)
+    
+    lemma = lemmatize_ru(tok)
+    
+    # 현재 토큰에 대한 정보가 없거나, 다른 표제형의 정보가 로드된 경우에만 새로 로드
+    if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != tok:
+        with st.spinner(f"'{tok}'의 정보를 불러오는 중... (Gemini API 호출)"):
+            try:
+                info = fetch_from_gemini(tok, lemma)
+                st.session_state.word_info[lemma] = {**info, "loaded_token": tok} 
+            except Exception as e:
+                st.error(f"단어 정보 로드 오류: {e}")
+                
+    # 쿼리 파라미터로 인해 재실행이 발생했으므로, manual_search_word를 업데이트하여 검색창에 표시
+    st.session_state.manual_search_word = clicked_word_from_url
+    st.experimental_set_query_params(word=None) # 쿼리 파라미터 비우기 (URL 깨끗하게 유지)
+    st.rerun() # 검색 결과 표시를 위해 재실행
+
+
+# ---------------------- 4. 직접 단어 검색 (상단) 및 처리 로직 ----------------------
 st.divider()
 st.subheader("🔍 직접 단어 검색")
 
-# 검색 입력 필드 
+# 검색 입력 필드 (st.session_state.manual_search_word에 바인딩)
 manual_input = st.text_input("단어 직접 입력", key="manual_search_word")
 
 # 검색 입력 처리 로직
-if manual_input:
+if manual_input and st.session_state.clicked_word != manual_input:
     # 1. 검색된 단어를 선택 목록에 추가 (파란색 글씨 유지를 위함)
     if manual_input not in st.session_state.selected_words:
         st.session_state.selected_words.append(manual_input)
@@ -179,7 +217,7 @@ if manual_input:
     st.markdown("---")
 
 
-# ---------------------- 4. 메인 텍스트 및 레이아웃 ----------------------
+# ---------------------- 5. 메인 텍스트 및 레이아웃 ----------------------
 
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка. Хорошо.", height=150)
 # 단어, 구두점, 공백을 모두 토큰으로 분리
@@ -187,55 +225,38 @@ tokens_with_punct = re.findall(r"(\w+|[^\s\w]+|\s+)", text, flags=re.UNICODE)
 
 left, right = st.columns([2, 1])
 
-# --- 4.1. 단어 목록 및 클릭 처리 (left 컬럼) ---
+# --- 5.1. 단어 목록 및 클릭 처리 (left 컬럼) ---
 with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
 
-    # 단어 버튼 클릭 시 실행될 콜백 함수
-    def on_word_click(clicked_token):
-        # 1. 클릭된 단어 정보를 세션 상태에 저장하여 상세 정보 표시
-        st.session_state.clicked_word = clicked_token
-        # 2. 클릭된 단어를 검색 필드에 자동으로 입력
-        st.session_state.manual_search_word = clicked_token
-        # 3. 파란색 글씨 유지를 위해 selected_words에 추가
-        if clicked_token not in st.session_state.selected_words:
-            st.session_state.selected_words.append(clicked_token)
+    html_all = ['<div class="text-container">']
+    
+    for tok in tokens_with_punct:
+        if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
+            # 단어인 경우: HTML <span>으로 렌더링
+            is_selected = tok in st.session_state.selected_words
+            css = "word-span"
+            
+            # 파란색 글씨 유지: 선택된 단어에 클래스를 직접 삽입
+            if is_selected:
+                css += " word-selected"
+            
+            # onclick: JavaScript 함수 호출 (클릭 시 쿼리 파라미터 변경)
+            # 쿼리 파라미터 변경이 Streamlit의 클릭을 보장하는 최선의 방법입니다.
+            html_all.append(
+                f'<span class="{css}" onclick="setQueryParam(\'{tok}\');">'
+                f'{tok}'
+                f'</span>'
+            )
 
-    # st.columns를 사용하여 단어와 구두점을 가로로 나열
-    # 이 방식이 Streamlit에서 인라인 레이아웃을 보장하는 가장 확실한 방법입니다.
-    cols = st.columns(len(tokens_with_punct))
+        else:
+            # 구두점 또는 공백인 경우: 일반 <span>으로 렌더링
+            html_all.append(f'<span class="word-punctuation">{tok}</span>')
 
-    for i, tok in enumerate(tokens_with_punct):
-        with cols[i]:
-            if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
-                # 단어인 경우: st.button 사용
-                is_selected = tok in st.session_state.selected_words
-                
-                # 파란색 글씨 유지를 위해 HTML 래퍼를 삽입
-                color_style = "#007bff" if is_selected else "#333"
-                bold_style = "bold" if is_selected else "normal"
-                
-                # st.button을 렌더링하고, 클릭 시 로직 실행
-                if st.button(
-                    tok, 
-                    key=f"word_{tok}_{i}", 
-                    on_click=on_word_click,
-                    args=(tok,)
-                ):
-                    pass
-                    
-                # ❗ CSS가 안 먹힐 경우 인라인 스타일로 색상 강제 적용
-                # 이 방식은 Streamlit에서 위젯에 직접 HTML을 적용하기 어려워 생략합니다. 
-                # CSS가 버튼의 색상을 변경하기를 기대합니다.
-                
-                # JS를 사용하지 않고 파란색 글씨를 유지하는 유일한 방법: 
-                # 클릭 후 st.session_state.manual_search_word가 업데이트되어 재실행 -> Section 3의 로직이 실행됨.
-
-            else:
-                # 구두점 또는 공백인 경우: st.markdown으로 출력
-                st.markdown(f'<span class="word-punctuation" style="font-weight: {bold_style}; color: {color_style};">{tok}</span>')
-
-
+    html_all.append('</div>')
+    
+    st.markdown("".join(html_all), unsafe_allow_html=True)
+    
     # 초기화 버튼
     st.markdown("---")
     if st.button("🔄 선택 및 검색 초기화", key="reset_button"):
@@ -243,9 +264,10 @@ with left:
         st.session_state.clicked_word = None
         st.session_state.word_info = {}
         st.session_state.manual_search_word = ""
+        st.experimental_set_query_params(word=None)
         st.rerun()
 
-# --- 4.2. 단어 상세 정보 (right 컬럼) ---
+# --- 5.2. 단어 상세 정보 (right 컬럼) ---
 with right:
     st.subheader("단어 상세 정보")
     
@@ -286,7 +308,7 @@ with right:
     else:
         st.info("왼쪽 텍스트에서 단어를 클릭하여 자동 검색을 시도하세요.")
 
-# ---------------------- 5. 하단: 누적 목록 + CSV ----------------------
+# ---------------------- 6. 하단: 누적 목록 + CSV ----------------------
 st.divider()
 st.subheader("📝 선택한 단어 모음 (기본형 기준)")
 

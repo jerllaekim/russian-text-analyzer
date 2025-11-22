@@ -8,7 +8,7 @@ from google import genai
 
 # ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
 st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
-st.title("러시아어 텍스트 분석기")
+st.title("🇷🇺 러시아어 텍스트 분석기")
 
 # 세션 상태 초기화
 if "selected_words" not in st.session_state:
@@ -42,6 +42,10 @@ POS_MAP = {
 @st.cache_data(show_spinner=False)
 def lemmatize_ru(word: str) -> str:
     """단어의 기본형(lemma)을 추출합니다."""
+    # 구(Phrase)는 기본형 추출을 건너뜁니다.
+    if ' ' in word.strip():
+        return word.strip()
+        
     if re.fullmatch(r'\w+', word, flags=re.UNICODE):
         lemmas = mystem.lemmatize(word)
         return (lemmas[0] if lemmas else word).strip()
@@ -49,7 +53,12 @@ def lemmatize_ru(word: str) -> str:
 
 @st.cache_data(show_spinner=False)
 def get_pos_ru(word: str) -> str:
-    """단어의 품사(POS)를 추출하여 한글로 반환합니다."""
+    """단어의 품사(POS)를 추출하여 한글로 반환하거나, 구일 경우 '관용구'로 반환합니다."""
+    
+    # ❗ 구(Phrase)일 경우 '관용구'로 처리
+    if ' ' in word.strip():
+        return '관용구'
+        
     if re.fullmatch(r'\w+', word, flags=re.UNICODE):
         analysis = mystem.analyze(word)
         if analysis and 'analysis' in analysis[0] and analysis[0]['analysis']:
@@ -167,7 +176,7 @@ text = st.text_area("러시아어 텍스트를 입력하세요", "Человек
 # 3.2. 단어 검색창 (다음)
 st.divider()
 st.subheader("🔍 직접 단어 검색")
-manual_input = st.text_input("단어 입력 후 Enter", key="current_search_query")
+manual_input = st.text_input("단어 입력 후 Enter (구 검색 시 공백 포함 입력)", key="current_search_query")
 
 # ---------------------- 4. 검색 처리 로직 ----------------------
 
@@ -184,7 +193,7 @@ if manual_input:
     pos = get_pos_ru(manual_input) # 품사 추출
     
     try:
-        # fetch_from_gemini에 품사 정보 전달
+        # fetch_from_gemini에는 품사 정보도 함께 전달
         info = fetch_from_gemini(manual_input, lemma, pos)
         
         # 검색된 단어의 정보를 세션 상태에 저장 (품사 정보 추가)
@@ -207,7 +216,7 @@ left, right = st.columns([2, 1])
 # --- 5.1. 텍스트 하이라이팅 (left 컬럼) ---
 with left:
     st.subheader("입력된 텍스트 하이라이팅")
-    st.info("검색창에 단어를 입력하면 텍스트에서 해당 단어가 하이라이트됩니다.")
+    st.info("검색창에 단어를 입력하면 텍스트에서 해당 단어/구가 하이라이트됩니다.")
 
     # 텍스트 하이라이팅 표시 
     html_parts = ['<div class="text-container">']
@@ -238,7 +247,6 @@ with left:
     st.markdown("---")
     st.button("🔄 선택 및 검색 초기화", key="reset_button", on_click=reset_all_state)
     
-    # on_click에서 이미 상태를 리셋했으므로, st.button() 호출 후 st.rerun()만 추가
     if st.session_state.reset_button:
         st.rerun()
 
@@ -254,7 +262,7 @@ with right:
 
         if info and "ko_meanings" in info:
             pos = info.get("pos", "품사") 
-            aspect_pair = info.get("aspect_pair") # 동사 쌍 정보 로드
+            aspect_pair = info.get("aspect_pair") 
             
             st.markdown(f"### **{current_token}**")
             
@@ -262,6 +270,10 @@ with right:
                 # 동사일 경우: 완료상/불완료상 함께 표시
                 st.markdown(f"**기본형 (불완료상):** *{aspect_pair.get('imp', lemma)}*")
                 st.markdown(f"**완료상:** *{aspect_pair.get('perf', '정보 없음')}*")
+                st.markdown(f"**품사:** {pos}")
+            elif pos == '관용구':
+                # 관용구일 경우: 기본형은 구(句) 자체로 표시
+                st.markdown(f"**구(句) 형태:** *{lemma}*")
                 st.markdown(f"**품사:** {pos}")
             else:
                 # 일반 단어일 경우
@@ -313,7 +325,7 @@ if word_info:
             if info.get("ko_meanings") and info["ko_meanings"][0] != "JSON 파싱 오류":
                 pos = info.get("pos", "품사") 
                 
-                # 동사일 경우 불완료상/완료상을 함께 표시하여 기본형으로 간주
+                # 기본형 형태 결정
                 if pos == '동사' and info.get("aspect_pair"):
                     imp = info['aspect_pair'].get('imp', lemma)
                     perf = info['aspect_pair'].get('perf', '정보 없음')

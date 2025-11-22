@@ -8,7 +8,7 @@ from google import genai
 
 # ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
 st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
-st.title("러시아어 텍스트 분석기")
+st.title("🇷🇺 러시아어 텍스트 분석기")
 
 # 세션 상태 초기화
 if "selected_words" not in st.session_state:
@@ -31,7 +31,9 @@ def lemmatize_ru(word: str) -> str:
     return word
 
 # ---------------------- 1. Gemini 연동 함수 ----------------------
-api_key = os.getenv("GEMINI_API_KEY")
+
+# Streamlit secrets에서 API 키 로드 (os.getenv도 폴백으로 사용)
+api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
 client = genai.Client(api_key=api_key) if api_key else None
 
 SYSTEM_PROMPT = "너는 러시아어-한국어 학습을 돕는 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 제공한다. 반드시 JSON만 출력한다."
@@ -45,7 +47,7 @@ def make_prompt(word, lemma):
 @st.cache_data(show_spinner=False)
 def fetch_from_gemini(word, lemma):
     if not client:
-        return {"ko_meanings": [f"'{word}'의 API 키 없음 (GEMINI_API_KEY 환경 변수 설정 필요)"], "examples": []}
+        return {"ko_meanings": [f"'{word}'의 API 키 없음 (GEMINI_API_KEY 설정 필요)"], "examples": []}
         
     prompt = make_prompt(word, lemma)
     
@@ -97,14 +99,14 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # 쿼리 파라미터 업데이트 JavaScript 주입
-# 클릭된 단어를 URL의 'word' 파라미터로 설정하고 페이지를 새로고침하여 Streamlit 재실행 유도
+# 클릭된 단어를 URL의 'word' 파라미터로 설정하고 **페이지를 새로고침**하여 Streamlit 재실행 유도
 st.markdown("""
 <script>
     function setQueryParam(word) {
         const url = new URL(window.location.href);
         // 'word' 파라미터 설정
         url.searchParams.set('word', word);
-        // URL 업데이트 후, 페이지를 새로고침하여 Streamlit의 Python 코드를 재실행합니다. (가장 확실한 방법)
+        // URL 업데이트 후, 페이지를 새로고침하여 Streamlit의 Python 코드를 재실행합니다.
         window.location.href = url.toString();
     }
 </script>
@@ -124,27 +126,30 @@ with left:
 
     html_all = ""
     for tok in tokens_with_punct:
+        css = "word-span"
         if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
             # 단어인 경우
-            css = "word-span"
             if tok in st.session_state.selected_words:
                 css = "word-selected"
             
-            # onclick: JavaScript 함수 호출
-            html_all += f"""
-            <span class="{css}" onclick="setQueryParam('{tok}');">
-                {tok}
-            </span>
-            """
+            # HTML 코드를 한 줄로 포맷팅하여 안전하게 렌더링
+            html_all += (
+                f'<span class="{css}" onclick="setQueryParam(\'{tok}\');">'
+                f'{tok}'
+                f'</span> ' # 단어 뒤에 공백 추가 (띄어쓰기)
+            )
         else:
-            # 구두점인 경우
-            html_all += f"""
-            <span class="word-punctuation">
-                {tok}
-            </span>
-            """
-            
-    st.markdown(f'<div style="line-height: 2.0;">{html_all}</div>', unsafe_allow_html=True)
+            # 구두점/공백인 경우
+            html_all += (
+                f'<span class="word-punctuation">'
+                f'{tok}'
+                f'</span>'
+            )
+            # 공백 토큰을 따로 처리하지 않았다면, 구두점 뒤에 공백이 필요할 경우 여기서 추가해야 함.
+            # (현재 정규식은 공백을 분리하지 않으므로, 원래 텍스트의 공백이 자연스럽게 포함됨)
+
+    # 전체를 Div로 묶어 HTML 렌더링을 확실하게 합니다.
+    st.markdown(f'<div style="line-height: 2.0; font-size: 1.25em;">{html_all}</div>', unsafe_allow_html=True) 
     
     # 초기화 버튼
     st.markdown("---")
@@ -152,7 +157,7 @@ with left:
         st.session_state.selected_words = []
         st.session_state.clicked_word = None
         st.session_state.word_info = {}
-        # 쿼리 파라미터도 초기화
+        # 쿼리 파라미터도 완전히 초기화
         st.experimental_set_query_params() 
         st.rerun()
 
@@ -174,7 +179,7 @@ if clicked_word_from_url and clicked_word_from_url != st.session_state.clicked_w
     
     # 현재 토큰에 대한 정보가 없거나, 다른 표제형의 정보가 로드된 경우에만 새로 로드
     if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != tok:
-        with st.spinner(f"'{tok}'의 정보를 불러오는 중... (API 호출)"):
+        with st.spinner(f"'{tok}'의 정보를 불러오는 중... (Gemini API 호출)"):
             try:
                 info = fetch_from_gemini(tok, lemma)
                 st.session_state.word_info[lemma] = {**info, "loaded_token": tok} 
@@ -211,7 +216,7 @@ with right:
                     st.markdown(f"- {ex.get('ru', '')}")
                     st.markdown(f" → {ex.get('ko', '')}")
             else:
-                if ko_meanings and ko_meanings[0].startswith("'{current_token}'의 API 키 없음"):
+                if ko_meanings and ko_meanings[0].startswith(f"'{current_token}'의 API 키 없음"):
                      st.warning("API 키가 설정되지 않아 예문을 불러올 수 없습니다.")
                 else:
                     st.info("예문 정보가 없습니다.")
@@ -263,9 +268,8 @@ if manual:
     st.markdown(f"**입력 단어:** **{manual}**")
     st.markdown(f"**기본형(lemma):** *{lemma}*")
 
-    # 수동 검색은 캐시된 정보를 사용하지 않고 매번 호출 (Gemini API 보호를 위해 @st.cache_data를 사용함)
-    # 실제 앱에서는 수동 검색에만 별도의 캐싱을 제거할 수 있으나, 여기서는 일관성을 위해 유지합니다.
     try:
+        # 수동 검색은 캐시된 정보를 사용
         info = fetch_from_gemini(manual, lemma)
     except Exception as e:
         st.error(f"Gemini 오류: {e}")

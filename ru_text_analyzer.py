@@ -8,7 +8,7 @@ from google import genai
 
 # ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
 st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
-st.title("🇷🇺 러시아어 텍스트 분석기")
+st.title("러시아어 텍스트 분석기")
 
 # 세션 상태 초기화
 if "selected_words" not in st.session_state:

@@ -249,7 +249,7 @@ with right:
             pos = info.get("pos", "품사") # 품사 정보 로드
             
             st.markdown(f"### **{current_token}**")
-            st.markdown(f"**기본형 (Lemma):** *{lemma}* ({pos})") # ⬅️ 품사 표시
+            st.markdown(f"**기본형 (Lemma):** *{lemma}* ({pos})") # 상세 정보: (품사)
             st.divider()
 
             ko_meanings = info.get("ko_meanings", [])
@@ -296,9 +296,9 @@ if word_info:
             if info.get("ko_meanings") and info["ko_meanings"][0] != "JSON 파싱 오류":
                 pos = info.get("pos", "품사") # 품사 정보 로드
                 
-                # 품사 정보를 뜻 뒤에 (품사) 형태로 추가
+                # 품사 정보를 뜻 앞에 (품사) 형태로 추가
                 short = "; ".join(info["ko_meanings"][:2])
-                short = f"{short} ({pos})" # ⬅️ 품사 추가
+                short = f"({pos}) {short}" # ⬅️ 품사 위치 수정
 
                 rows.append({"기본형": lemma, "대표 뜻": short})
                 processed_lemmas.add(lemma)

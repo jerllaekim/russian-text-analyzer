@@ -17,6 +17,8 @@ if "clicked_word" not in st.session_state:
     st.session_state.clicked_word = None
 if "word_info" not in st.session_state:
     st.session_state.word_info = {}
+if "manual_search_word" not in st.session_state:
+    st.session_state.manual_search_word = ""
 
 mystem = Mystem()
 
@@ -64,27 +66,35 @@ def fetch_from_gemini(word, lemma):
             data['examples'] = data['examples'][:2]
         return data
     except json.JSONDecodeError:
+        # 오류 발생 시 디버깅 정보를 출력하고 빈 목록 반환
         st.error(f"Gemini 응답을 JSON으로 디코딩하는 데 실패했습니다: {text[:100]}...")
         return {"ko_meanings": ["응답 오류"], "examples": []}
 
+# ---------------------- 2. 전역 스타일 및 JavaScript 정의 ----------------------
 
-# ---------------------- 2. 전역 스타일 및 숨겨진 폼 처리 ----------------------
+# JavaScript: 단어 클릭 시 하단의 검색창에 텍스트를 입력하고 Streamlit을 재실행합니다.
+st.markdown("""
+<script>
+    function setManualSearchWord(word) {
+        // Streamlit 텍스트 입력 위젯의 ID를 찾습니다. (가장 마지막의 st-cc-N-N)
+        // 여기서는 직접 ID를 찾지 않고, Streamlit의 내부 JS API를 통해 세션 상태를 업데이트하는 
+        // 꼼수를 사용하는 것이 가장 안정적입니다. (단, Streamlit 내부 JS API가 변경될 수 있음)
+        
+        // 텍스트 입력 필드의 고유 ID를 찾기 위한 트릭
+        const inputField = document.querySelector('[data-testid="stTextInput"] input[aria-label="단어 직접 입력"]');
+        if (inputField) {
+            inputField.value = word;
+            // Input 이벤트 강제 발생 (Streamlit에 변경 사항을 알림)
+            const event = new Event('input', { bubbles: true });
+            inputField.dispatchEvent(event);
+        }
+    }
+</script>
+""", unsafe_allow_html=True)
 
-# 숨겨진 버튼을 처리하기 위한 CSS
 st.markdown("""
 <style>
-    /* 텍스트 입력 영역 아래의 띄어쓰기 제어 */
-    div.stTextArea + div.stMarkdown > div {
-        line-height: 2.0;
-        font-size: 1.1em;
-    }
-    
-    /* 폼 버튼 숨기기 */
-    div.word-form > button {
-        display: none !important;
-    }
-
-    /* 단어 스타일 (버튼이 아닌 HTML <span>으로 완벽히 인라인 처리) */
+    /* 1. 단어 스타일 (클릭 가능) */
     .word-span {
         cursor: pointer;
         padding: 0px 0px;
@@ -92,30 +102,30 @@ st.markdown("""
         display: inline-block;
         transition: color 0.2s;
         user-select: none;
-        white-space: pre; /* 띄어쓰기 보존 */
+        white-space: pre; 
+        font-size: 1.25em;
     }
     
-    /* 파란색 글씨화 (선택된 단어) */
+    /* 2. 파란색 글씨화 (선택/검색된 단어) */
     .word-selected {
         color: #007bff !important; 
         font-weight: bold;
     }
     
-    /* 구두점 스타일 (단어와 크기 맞추기) */
+    /* 3. 구두점 스타일 */
     .word-punctuation {
         padding: 0px 0px;
         margin: 0;
         display: inline-block;
         user-select: none;
-        line-height: 1.5;
-        font-size: 1em;
         white-space: pre;
+        font-size: 1.25em;
     }
     
-    /* 전체 텍스트를 감싸는 컨테이너 스타일 */
+    /* 4. 전체 텍스트 레이아웃 */
     .text-container {
-        font-size: 1.25em;
         line-height: 2.0;
+        margin-bottom: 20px;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -125,6 +135,7 @@ st.markdown("""
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка.")
 # 단어, 구두점, 공백을 모두 토큰으로 분리
 tokens_with_punct = re.findall(r"(\w+|[^\s\w]+|\s+)", text, flags=re.UNICODE)
+# 빈 토큰은 제거하지 않습니다. (띄어쓰기를 위해)
 
 left, right = st.columns([2, 1])
 
@@ -132,59 +143,43 @@ left, right = st.columns([2, 1])
 with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
 
-    # 클릭된 단어를 숨겨진 st.form을 통해 처리하는 트릭
-    with st.form(key='word_click_form', clear_on_submit=False):
-        
-        html_all = ['<div class="text-container">']
-        
-        for i, tok in enumerate(tokens_with_punct):
-            if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
-                # 단어인 경우: HTML <span>으로 렌더링하고, 클릭 시 폼 제출
-                is_selected = tok in st.session_state.selected_words
-                css = "word-span"
-                if is_selected:
-                    css += " word-selected"
-                
-                # HTML 버튼 역할을 하는 <span> 생성.
-                # 클릭 시, 숨겨진 폼의 submit 버튼을 트리거하고 클릭된 단어를 hidden input에 담아 전달합니다.
-                html_all.append(
-                    f'<span class="{css}" onclick="document.getElementById(\'hidden_word\').value=\'{tok}\'; document.querySelector(\'[data-testid="stForm"] button[type="submit"]\').click();">'
-                    f'{tok}'
-                    f'</span>'
-                )
+    html_all = ['<div class="text-container">']
+    
+    for tok in tokens_with_punct:
+        if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
+            # 단어인 경우: HTML <span>으로 렌더링
+            is_selected = tok in st.session_state.selected_words
+            css = "word-span"
+            if is_selected:
+                css += " word-selected"
+            
+            # onclick: JavaScript 함수 호출 (하단 검색창에 단어 입력)
+            html_all.append(
+                f'<span class="{css}" onclick="setManualSearchWord(\'{tok}\');">'
+                f'{tok}'
+                f'</span>'
+            )
 
-            else:
-                # 구두점 또는 공백인 경우: 일반 <span>으로 렌더링 (파란색화 방지)
-                html_all.append(f'<span class="word-punctuation">{tok}</span>')
+        else:
+            # 구두점 또는 공백인 경우: 일반 <span>으로 렌더링
+            html_all.append(f'<span class="word-punctuation">{tok}</span>')
 
-        html_all.append('</div>')
-        
-        st.markdown("".join(html_all), unsafe_allow_html=True)
-        
-        # 폼 제출 시 클릭된 단어를 저장할 숨겨진 Input
-        clicked_word_input = st.text_input("Hidden Clicked Word", key='hidden_word', label_visibility="collapsed")
-        
-        # 숨겨진 Submit 버튼. 이 버튼이 눌리면 Python 코드가 재실행됨.
-        submitted = st.form_submit_button("Submit Hidden Form", type="primary")
-
-    # 폼 제출 후 로직 처리
-    if submitted and clicked_word_input:
-        st.session_state.clicked_word = clicked_word_input
-        # 로드할 단어를 세션 상태에 추가
-        if clicked_word_input not in st.session_state.selected_words:
-            st.session_state.selected_words.append(clicked_word_input)
-        # st.rerun()은 submit_button이 눌리면 자동으로 발생함.
-
+    html_all.append('</div>')
+    
+    st.markdown("".join(html_all), unsafe_allow_html=True)
+    
     # 초기화 버튼
     st.markdown("---")
-    if st.button("🔄 선택 초기화", key="reset_button"):
+    if st.button("🔄 선택 및 검색 초기화", key="reset_button"):
         st.session_state.selected_words = []
         st.session_state.clicked_word = None
         st.session_state.word_info = {}
+        st.session_state.manual_search_word = "" # 검색창도 초기화
         st.rerun()
 
-# --- 3.2. 단어 상세 정보 로드 ---
+# --- 3.2. 단어 상세 정보 로드 (클릭/검색 시) ---
 
+# 클릭/검색된 단어 로직
 current_token = st.session_state.clicked_word
 
 if current_token:
@@ -236,7 +231,7 @@ with right:
             st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
             
     else:
-        st.info("왼쪽 단어 목록에서 단어를 클릭해주세요.")
+        st.info("왼쪽 텍스트에서 단어를 클릭하거나, 아래 검색창을 이용해주세요.")
 
 # ---------------------- 4. 하단: 누적 목록 + CSV ----------------------
 st.divider()
@@ -267,19 +262,27 @@ if word_info:
         st.info("선택된 단어의 정보를 로드 중이거나, 표시할 정보가 없습니다.")
 
 
-# ---------------------- 5. 직접 단어 검색 ----------------------
+# ---------------------- 5. 직접 단어 검색 (클릭 기능의 목표) ----------------------
 st.divider()
 st.subheader("🔍 직접 단어 검색")
 
-manual = st.text_input("단어 직접 입력", "")
+# 클릭 시 단어가 여기에 자동으로 채워집니다.
+manual_input = st.text_input("단어 직접 입력", key="manual_search_word")
 
-if manual:
-    lemma = lemmatize_ru(manual)
-    st.markdown(f"**입력 단어:** **{manual}**")
+if manual_input:
+    # 1. 검색된 단어 세션 상태에 추가 (파란색 글씨 유지를 위함)
+    if manual_input not in st.session_state.selected_words:
+        st.session_state.selected_words.append(manual_input)
+    
+    # 2. 상세 정보 영역에 표시될 단어 업데이트
+    st.session_state.clicked_word = manual_input
+    
+    lemma = lemmatize_ru(manual_input)
+    st.markdown(f"**입력 단어:** **{manual_input}**")
     st.markdown(f"**기본형(lemma):** *{lemma}*")
 
     try:
-        info = fetch_from_gemini(manual, lemma)
+        info = fetch_from_gemini(manual_input, lemma)
     except Exception as e:
         st.error(f"Gemini 오류: {e}")
         info = {}

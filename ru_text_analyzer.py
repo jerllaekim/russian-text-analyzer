@@ -104,6 +104,19 @@ st.markdown("""
         white-space: pre;
         font-size: 1.25em;
     }
+    /* 저작권 푸터 스타일 */
+    .footer {
+        position: fixed;
+        left: 0;
+        bottom: 0;
+        width: 100%;
+        background-color: #f0f2f6; 
+        color: #888;
+        text-align: center;
+        padding: 10px;
+        font-size: 0.75em;
+        border-top: 1px solid #ddd;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -115,7 +128,7 @@ st.subheader("📝 텍스트 입력")
 text = st.text_area("러시아어 텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка. Хорошо.", height=150, key="input_text_area")
 
 
-# 3.2. 단어 검색창 (바로 다음)
+# 3.2. 단어 검색창 (다음)
 st.divider()
 st.subheader("🔍 직접 단어 검색")
 manual_input = st.text_input("단어 입력 후 Enter", key="current_search_query")
@@ -174,14 +187,24 @@ with left:
     
     st.markdown("".join(html_parts), unsafe_allow_html=True)
     
-    # 초기화 버튼
-    st.markdown("---")
-    if st.button("🔄 선택 및 검색 초기화", key="reset_button"):
+    # 초기화 버튼을 위한 콜백 함수 정의
+    def reset_all_state():
         st.session_state.selected_words = []
         st.session_state.clicked_word = None
         st.session_state.word_info = {}
         st.session_state.current_search_query = ""
+        # 텍스트 에어리어의 내용도 초기 문장으로 리셋
+        st.session_state.input_text_area = "Человек идёт по улице. Это тестовая строка. Хорошо."
+
+
+    # 초기화 버튼 (on_click을 사용하여 상태 초기화 후 rerun)
+    st.markdown("---")
+    st.button("🔄 선택 및 검색 초기화", key="reset_button", on_click=reset_all_state)
+    
+    # on_click에서 이미 상태를 리셋했으므로, st.button() 호출 후 st.rerun()만 추가
+    if st.session_state.reset_button:
         st.rerun()
+
 
 # --- 5.2. 단어 상세 정보 (right 컬럼) ---
 with right:
@@ -252,3 +275,15 @@ if word_info:
         st.download_button("💾 CSV로 저장", csv_bytes, "russian_words.csv", "text/csv")
     else:
         st.info("선택된 단어의 정보가 로드 중이거나, 표시할 정보가 없습니다.")
+
+
+# ---------------------- 7. 저작권 표시 (페이지 최하단) ----------------------
+st.markdown("---")
+st.markdown("""
+<div class="footer">
+    이 페이지는 **연세대학교 노어노문학과 25-2 러시아어 교육론 5팀의 프로젝트 결과물**입니다. 
+    <br>
+    본 페이지의 내용, 기능 및 데이터를 **학습 목적 이외의 용도로 무단 복제, 배포, 상업적 이용**할 경우, 
+    관련 법령에 따라 **민사상 손해배상 청구 및 형사상 처벌**을 받을 수 있습니다.
+</div>
+""", unsafe_allow_html=True)

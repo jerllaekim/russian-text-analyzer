@@ -17,9 +17,7 @@ if "clicked_word" not in st.session_state:
     st.session_state.clicked_word = None
 if "word_info" not in st.session_state:
     st.session_state.word_info = {}
-# manual_search_word는 st.text_input의 key로 사용하며, 직접 할당은 피합니다.
-if "current_search_query" not in st.session_state:
-    st.session_state.current_search_query = ""
+# 검색어는 st.text_input의 key로만 사용하며, 재할당을 피합니다.
 
 mystem = Mystem()
 
@@ -92,7 +90,7 @@ st.markdown("""
         margin-bottom: 20px;
         font-size: 1.25em;
     }
-    /* 선택된 단어 색상 스타일 (하이라이팅) */
+    /* 선택/검색된 단어 하이라이팅 */
     .word-selected {
         color: #007bff !important; 
         font-weight: bold;
@@ -110,11 +108,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ---------------------- 3. 직접 단어 검색 (상단) 및 처리 로직 ----------------------
+# ---------------------- 3. 직접 단어 검색 및 처리 로직 ----------------------
 st.divider()
 st.subheader("🔍 직접 단어 검색")
 
-# st.session_state.current_search_query에 바인딩
+# 검색 입력 필드 (key로 세션 상태에 바인딩)
 manual_input = st.text_input("단어 직접 입력", key="current_search_query")
 
 # 검색 입력 처리 로직
@@ -162,47 +160,19 @@ if manual_input:
 # ---------------------- 4. 메인 텍스트 및 레이아웃 ----------------------
 
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка. Хорошо.", height=150)
-# 단어만 추출하여 드롭다운 목록 생성
-all_words = sorted(list(set(re.findall(r'\w+', text, flags=re.UNICODE))))
+# 단어, 구두점, 공백을 모두 토큰으로 분리
+tokens_with_punct = re.findall(r"(\w+|[^\s\w]+|\s+)", text, flags=re.UNICODE)
 
 
 left, right = st.columns([2, 1])
 
-# --- 4.1. 단어 목록 및 선택 (left 컬럼) ---
+# --- 4.1. 단어 목록 및 하이라이팅 (left 컬럼) ---
 with left:
-    st.subheader("단어 목록 (텍스트에서 추출)")
-
-    # ❗ 드롭다운 메뉴로 클릭 기능 대체 (안정성 보장)
-    selected_word_from_menu = st.selectbox(
-        "📝 분석할 단어 선택", 
-        options=["--- 단어를 선택하세요 ---"] + all_words,
-        index=0,
-        key="word_selectbox"
-    )
-
-    def select_word():
-        # 드롭다운 선택 시 검색 필드 및 클릭된 단어 업데이트
-        if st.session_state.word_selectbox != "--- 단어를 선택하세요 ---":
-            word = st.session_state.word_selectbox
-            st.session_state.current_search_query = word
-            st.session_state.clicked_word = word
-            if word not in st.session_state.selected_words:
-                st.session_state.selected_words.append(word)
-
-    # st.selectbox의 on_change를 사용하여 상태 업데이트
-    st.selectbox(
-        "분석할 단어 선택", 
-        options=["--- 단어를 선택하세요 ---"] + all_words,
-        index=0,
-        key="word_selectbox_trigger", # 실제 위젯
-        on_change=select_word,
-        label_visibility="collapsed"
-    )
+    st.subheader("입력된 텍스트")
+    st.info("단어를 검색창에 입력하거나 붙여넣으면 텍스트에서 해당 단어가 하이라이트됩니다.")
 
     # 텍스트 하이라이팅 표시 (긴 텍스트를 위해 HTML 태그 사용 최소화)
     
-    # 텍스트 전체를 분리하여 단어에만 하이라이팅 태그 삽입
-    tokens_with_punct = re.findall(r"(\w+|[^\s\w]+|\s+)", text, flags=re.UNICODE)
     html_parts = ['<div class="text-container">']
 
     for tok in tokens_with_punct:
@@ -236,7 +206,6 @@ with right:
     if current_token:
         lemma = lemmatize_ru(current_token)
         info = st.session_state.word_info.get(lemma, {})
-        # ... (상세 정보 표시 로직은 이전과 동일)
 
         if info and "ko_meanings" in info:
             st.markdown(f"### **{current_token}**")
@@ -267,7 +236,7 @@ with right:
             st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
             
     else:
-        st.info("왼쪽 드롭다운 메뉴에서 단어를 선택하거나 위 검색창을 이용해주세요.")
+        st.info("검색창에 단어를 입력하거나 붙여넣으면 여기에 상세 정보가 표시됩니다.")
 
 # ---------------------- 5. 하단: 누적 목록 + CSV ----------------------
 st.divider()

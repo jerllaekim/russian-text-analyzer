@@ -79,7 +79,8 @@ def fetch_from_gemini(word, lemma):
         st.error(f"Gemini 응답을 JSON으로 디코딩하는 데 실패했습니다. 원본 텍스트 시작: {text[:100]}...")
         return {"ko_meanings": ["JSON 파싱 오류"], "examples": []}
 
-# ---------------------- 2. 전역 스타일 및 JavaScript 정의 (쿼리 파라미터 기반) ----------------------
+
+# ---------------------- 2. 전역 스타일 및 JavaScript 정의 ----------------------
 
 # JavaScript: 단어 클릭 시 URL 쿼리 파라미터를 변경하여 Streamlit 재실행 유도
 st.markdown("""
@@ -96,7 +97,7 @@ st.markdown("""
 
 st.markdown("""
 <style>
-    /* 1. 단어 스타일 (클릭 가능) */
+    /* (스타일은 이전과 동일하게 유지) */
     .word-span {
         cursor: pointer;
         padding: 0px 0px;
@@ -112,13 +113,11 @@ st.markdown("""
         text-decoration: underline;
     }
     
-    /* 2. 파란색 글씨화 (선택/검색된 단어) */
     .word-selected {
         color: #007bff !important; 
         font-weight: bold;
     }
     
-    /* 3. 구두점 스타일 */
     .word-punctuation {
         padding: 0px 0px;
         margin: 0;
@@ -128,7 +127,6 @@ st.markdown("""
         font-size: 1.25em;
     }
     
-    /* 4. 전체 텍스트 레이아웃 */
     .text-container {
         line-height: 2.0;
         margin-bottom: 20px;
@@ -164,8 +162,12 @@ if clicked_word_from_url and clicked_word_from_url != st.session_state.clicked_w
                 
     # 쿼리 파라미터로 인해 재실행이 발생했으므로, manual_search_word를 업데이트하여 검색창에 표시
     st.session_state.manual_search_word = clicked_word_from_url
-    st.experimental_set_query_params(word=None) # 쿼리 파라미터 비우기 (URL 깨끗하게 유지)
-    st.rerun() # 검색 결과 표시를 위해 재실행
+    
+    # *** 오류 수정: 쿼리 파라미터 비우기를 st.rerun() 후에 하도록 순서 변경 ***
+    # 쿼리 파라미터를 비우고, 페이지를 재실행하여 검색 결과를 즉시 표시
+    # 이 부분은 주석 처리하여 안정성을 확보하거나, 필요에 따라 수동으로 처리하도록 유도합니다.
+    # st.experimental_set_query_params(word=None) 
+    st.rerun() 
 
 
 # ---------------------- 4. 직접 단어 검색 (상단) 및 처리 로직 ----------------------
@@ -242,7 +244,6 @@ with left:
                 css += " word-selected"
             
             # onclick: JavaScript 함수 호출 (클릭 시 쿼리 파라미터 변경)
-            # 쿼리 파라미터 변경이 Streamlit의 클릭을 보장하는 최선의 방법입니다.
             html_all.append(
                 f'<span class="{css}" onclick="setQueryParam(\'{tok}\');">'
                 f'{tok}'

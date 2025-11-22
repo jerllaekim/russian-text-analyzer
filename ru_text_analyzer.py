@@ -33,10 +33,9 @@ POS_MAP = {
     'INTJ': '감탄사',   # interjection
     'PART': '불변화사',  # particle
     'NUM': '수사',       # numeral
-    'APRO': '대명사적 형용사', # pronominal adjective (e.g. мой)
-    'ANUM': '서수사',    # ordinal numeral (e.g. первый)
-    'SPRO': '대명사',    # substantive pronoun (e.g. я)
-    # 기타 약어는 '품사'로 통일하여 안정성 확보
+    'APRO': '대명사적 형용사', 
+    'ANUM': '서수사',    
+    'SPRO': '대명사',    
 }
 
 
@@ -55,30 +54,37 @@ def get_pos_ru(word: str) -> str:
         analysis = mystem.analyze(word)
         if analysis and 'analysis' in analysis[0] and analysis[0]['analysis']:
             grammar_info = analysis[0]['analysis'][0]['gr']
-            # 품사(POS) 약어 추출 (쉼표나 등호 이전)
             pos_abbr = grammar_info.split('=')[0].split(',')[0].strip()
             return POS_MAP.get(pos_abbr, '품사')
-    return '품사' # 기본값으로 '품사' 반환
+    return '품사'
 
 # ---------------------- 1. Gemini 연동 함수 ----------------------
 
 api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
 client = genai.Client(api_key=api_key) if api_key else None
 
-SYSTEM_PROMPT = "너는 러시아어-한국어 학습을 돕는 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 최대 두 개만 제공한다. 반드시 JSON만 출력한다."
-def make_prompt(word, lemma):
-    return f"""{SYSTEM_PROMPT}
+SYSTEM_PROMPT = "너는 러시아어-한국어 학습 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 최대 두 개만 제공한다. 만약 동사(V)이면, 불완료상(imp)과 완료상(perf) 형태를 함께 제공해야 한다. 반드시 JSON만 출력한다."
+
+def make_prompt(word, lemma, pos):
+    if pos == '동사':
+        return f"""{SYSTEM_PROMPT}
+단어: {word}
+기본형: {lemma}
+{{ "ko_meanings": ["뜻1", "뜻2"], "aspect_pair": {{"imp": "불완료상 동사", "perf": "완료상 동사"}}, "examples": [ {{"ru": "예문1", "ko": "번역1"}}, {{"ru": "예문2", "ko": "번역2"}} ] }}
+"""
+    else:
+        return f"""{SYSTEM_PROMPT}
 단어: {word}
 기본형: {lemma}
 {{ "ko_meanings": ["뜻1", "뜻2"], "examples": [ {{"ru": "예문1", "ko": "번역1"}}, {{"ru": "예문2", "ko": "번역2"}} ] }}
 """
 
 @st.cache_data(show_spinner=False)
-def fetch_from_gemini(word, lemma):
+def fetch_from_gemini(word, lemma, pos):
     if not client:
         return {"ko_meanings": [f"'{word}'의 API 키 없음 (GEMINI_API_KEY 설정 필요)"], "examples": []}
         
-    prompt = make_prompt(word, lemma)
+    prompt = make_prompt(word, lemma, pos)
     res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     text = res.text.strip()
     
@@ -155,7 +161,7 @@ st.markdown("""
 
 # 3.1. 텍스트 입력창 (최상단)
 st.subheader("📝 텍스트 입력")
-text = st.text_area("러시아어 텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка. Хорошо.", height=150, key="input_text_area")
+text = st.text_area("러시아어 텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка. Хорошо. Я часто читаю эту книгу.", height=150, key="input_text_area")
 
 
 # 3.2. 단어 검색창 (다음)
@@ -178,7 +184,8 @@ if manual_input:
     pos = get_pos_ru(manual_input) # 품사 추출
     
     try:
-        info = fetch_from_gemini(manual_input, lemma)
+        # fetch_from_gemini에 품사 정보 전달
+        info = fetch_from_gemini(manual_input, lemma, pos)
         
         # 검색된 단어의 정보를 세션 상태에 저장 (품사 정보 추가)
         if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != manual_input:
@@ -246,10 +253,20 @@ with right:
         info = st.session_state.word_info.get(lemma, {})
 
         if info and "ko_meanings" in info:
-            pos = info.get("pos", "품사") # 품사 정보 로드
+            pos = info.get("pos", "품사") 
+            aspect_pair = info.get("aspect_pair") # 동사 쌍 정보 로드
             
             st.markdown(f"### **{current_token}**")
-            st.markdown(f"**기본형 (Lemma):** *{lemma}* ({pos})") # 상세 정보: (품사)
+            
+            if pos == '동사' and aspect_pair:
+                # 동사일 경우: 완료상/불완료상 함께 표시
+                st.markdown(f"**기본형 (불완료상):** *{aspect_pair.get('imp', lemma)}*")
+                st.markdown(f"**완료상:** *{aspect_pair.get('perf', '정보 없음')}*")
+                st.markdown(f"**품사:** {pos}")
+            else:
+                # 일반 단어일 경우
+                st.markdown(f"**기본형 (Lemma):** *{lemma}* ({pos})")
+            
             st.divider()
 
             ko_meanings = info.get("ko_meanings", [])
@@ -294,13 +311,21 @@ if word_info:
         if lemma not in processed_lemmas and lemma in word_info:
             info = word_info[lemma]
             if info.get("ko_meanings") and info["ko_meanings"][0] != "JSON 파싱 오류":
-                pos = info.get("pos", "품사") # 품사 정보 로드
+                pos = info.get("pos", "품사") 
                 
+                # 동사일 경우 불완료상/완료상을 함께 표시하여 기본형으로 간주
+                if pos == '동사' and info.get("aspect_pair"):
+                    imp = info['aspect_pair'].get('imp', lemma)
+                    perf = info['aspect_pair'].get('perf', '정보 없음')
+                    base_form = f"{imp} / {perf}"
+                else:
+                    base_form = lemma
+
                 # 품사 정보를 뜻 앞에 (품사) 형태로 추가
                 short = "; ".join(info["ko_meanings"][:2])
-                short = f"({pos}) {short}" # ⬅️ 품사 위치 수정
+                short = f"({pos}) {short}" 
 
-                rows.append({"기본형": lemma, "대표 뜻": short})
+                rows.append({"기본형": base_form, "대표 뜻": short})
                 processed_lemmas.add(lemma)
 
     if rows:

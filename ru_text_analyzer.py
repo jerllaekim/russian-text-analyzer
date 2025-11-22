@@ -35,7 +35,6 @@ client = genai.Client(api_key=api_key) if api_key else None
 
 SYSTEM_PROMPT = "너는 러시아어-한국어 학습을 돕는 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 최대 두 개만 제공한다. 반드시 JSON만 출력한다."
 def make_prompt(word, lemma):
-    # 예문을 최대 2개만 요청하도록 프롬프트 수정
     return f"""{SYSTEM_PROMPT}
 단어: {word}
 기본형: {lemma}
@@ -61,7 +60,6 @@ def fetch_from_gemini(word, lemma):
              
     try:
         data = json.loads(text)
-        # 예문이 3개 이상일 경우 2개로 제한
         if 'examples' in data and len(data['examples']) > 2:
             data['examples'] = data['examples'][:2]
         return data
@@ -70,125 +68,112 @@ def fetch_from_gemini(word, lemma):
         return {"ko_meanings": ["응답 오류"], "examples": []}
 
 
-# ---------------------- 2. 전역 스타일 정의 (버튼 UI 및 간격 최소화) ----------------------
+# ---------------------- 2. 전역 스타일 및 숨겨진 폼 처리 ----------------------
 
+# 숨겨진 버튼을 처리하기 위한 CSS
 st.markdown("""
 <style>
-    /* 1. 단어 버튼 스타일: 버튼 모양 완전히 제거 및 간격 최소화 */
-    /* stButton 내부 button 요소에 직접 스타일 적용 */
-    div.stButton > button {
-        padding: 2px 0px !important; /* 내부 패딩 최소화 */
-        margin: 0 !important;
-        border: none !important;
-        background: none !important; 
-        box-shadow: none !important; 
-        cursor: pointer;
-        color: #333 !important; 
-        font-weight: normal;
-        height: auto !important;
-        line-height: 1.5 !important;
-        white-space: nowrap;
-        text-align: left !important;
-    }
-    
-    /* 2. 클릭된 단어 색상 유지 (파란색) */
-    /* word-selected 클래스가 버튼의 텍스트를 파란색으로 만듭니다. */
-    .word-selected > div > button { 
-        color: #007bff !important; 
-        font-weight: bold !important;
-    }
-    
-    /* 3. 구두점 스타일 */
-    .word-punctuation {
-        padding: 2px 0px;
-        margin: 0; /* 구두점 마진 제거 */
-        display: inline-block;
-        user-select: none;
-        line-height: 1.5;
+    /* 텍스트 입력 영역 아래의 띄어쓰기 제어 */
+    div.stTextArea + div.stMarkdown > div {
+        line-height: 2.0;
         font-size: 1.1em;
     }
     
-    /* 4. st.columns 컨테이너 내의 간격 조정 (가로 나열 강제) */
-    /* 단어 간 간격을 0으로 만들고, 띄어쓰기는 단어 자체의 버튼 레이블에 포함시키거나,
-       구두점 토큰으로 처리하여 시각적으로 최소화합니다. */
-    div[data-testid^="stHorizontalBlock"] {
-        flex-wrap: wrap !important;
-        gap: 0px 0px !important; /* 컬럼 간격을 0으로 설정하여 단어를 붙임 */
-        margin: 0 !important;
+    /* 폼 버튼 숨기기 */
+    div.word-form > button {
+        display: none !important;
+    }
+
+    /* 단어 스타일 (버튼이 아닌 HTML <span>으로 완벽히 인라인 처리) */
+    .word-span {
+        cursor: pointer;
+        padding: 0px 0px;
+        margin: 0px 0px;
+        display: inline-block;
+        transition: color 0.2s;
+        user-select: none;
+        white-space: pre; /* 띄어쓰기 보존 */
+    }
+    
+    /* 파란색 글씨화 (선택된 단어) */
+    .word-selected {
+        color: #007bff !important; 
+        font-weight: bold;
+    }
+    
+    /* 구두점 스타일 (단어와 크기 맞추기) */
+    .word-punctuation {
+        padding: 0px 0px;
+        margin: 0;
+        display: inline-block;
+        user-select: none;
+        line-height: 1.5;
+        font-size: 1em;
+        white-space: pre;
+    }
+    
+    /* 전체 텍스트를 감싸는 컨테이너 스타일 */
+    .text-container {
+        font-size: 1.25em;
+        line-height: 2.0;
     }
 </style>
 """, unsafe_allow_html=True)
 
-
 # ---------------------- 3. 메인 로직 및 레이아웃 ----------------------
 
-text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка. Хорошо.")
-# 공백(띄어쓰기)과 구두점을 토큰으로 분리하여 정확히 배치
+text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка.")
+# 단어, 구두점, 공백을 모두 토큰으로 분리
 tokens_with_punct = re.findall(r"(\w+|[^\s\w]+|\s+)", text, flags=re.UNICODE)
-tokens_with_punct = [t for t in tokens_with_punct if t.strip()] # 빈 토큰 제거
 
 left, right = st.columns([2, 1])
 
-# --- 3.1. 단어 목록 (left 컬럼) ---
+# --- 3.1. 단어 목록 및 클릭 처리 (left 컬럼) ---
 with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
 
-    # 단어 버튼 클릭 시 실행될 콜백 함수
-    def on_word_click(clicked_token):
-        st.session_state.clicked_word = clicked_token
-        if clicked_token not in st.session_state.selected_words:
-            st.session_state.selected_words.append(clicked_token)
-
-    # st.columns를 사용하여 단어와 구두점을 가로로 나열
-    # 이 방식은 Streamlit에서 인라인 레이아웃을 보장하는 가장 확실한 방법입니다.
-    
-    # 토큰 개수만큼 컬럼을 생성하고 간격 최소화 CSS를 적용
-    cols = st.columns(len(tokens_with_punct)) 
-
-    for i, tok in enumerate(tokens_with_punct):
-        with cols[i]:
+    # 클릭된 단어를 숨겨진 st.form을 통해 처리하는 트릭
+    with st.form(key='word_click_form', clear_on_submit=False):
+        
+        html_all = ['<div class="text-container">']
+        
+        for i, tok in enumerate(tokens_with_punct):
             if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
-                # 단어인 경우: st.button 사용
+                # 단어인 경우: HTML <span>으로 렌더링하고, 클릭 시 폼 제출
                 is_selected = tok in st.session_state.selected_words
-                
-                # CSS 클래스를 버튼의 상위 Div에 적용하기 위한 래퍼 HTML 생성
-                # Streamlit은 st.button을 자체 Div로 래핑하므로, 래퍼 위에 래퍼를 씌워야 합니다.
-                
-                # HTML 래퍼: 이 래퍼에 word-selected 클래스를 적용하고, st.button을 배치합니다.
-                # 그러나 st.button은 Python 함수 호출이므로, HTML과 섞이지 않도록 분리합니다.
-                
-                # 임시: st.button이 이미 순서대로 배치되고 있으므로,
-                # CSS에 의존하여 버튼의 부모 Div에 스타일이 적용되도록 합니다.
-                
-                # st.button을 렌더링하고, 클릭 시 로직 실행
-                st.button(
-                    tok, 
-                    key=f"word_{tok}_{i}", # 고유 key
-                    on_click=on_word_click,
-                    args=(tok,)
-                )
-                
-                # 파란색 글씨화를 위해 버튼이 출력된 후 CSS 클래스를 동적으로 적용하는 트릭이 필요하지만,
-                # 현재는 **CSS 선택자를 이용해 글자색을 강제**하는 방식으로 해결을 시도합니다.
-                # 클릭된 단어의 key를 이용해 Streamlit이 재실행될 때, CSS 클래스가 재적용됩니다.
+                css = "word-span"
                 if is_selected:
-                    st.markdown(
-                        f"""
-                        <script>
-                            // 해당 버튼을 포함하는 stButton 컨테이너를 찾아 word-selected 클래스 적용
-                            const button = document.querySelector('[data-testid="stButton"] button[key="word_{tok}_{i}"]');
-                            if (button && button.parentElement) {{
-                                button.parentElement.parentElement.classList.add('word-selected');
-                            }}
-                        </script>
-                        """, 
-                        unsafe_allow_html=True
-                    )
-            
-            else:
-                # 구두점 또는 공백인 경우: st.markdown으로 출력
-                st.markdown(f'<span class="word-punctuation">{tok}</span>')
+                    css += " word-selected"
+                
+                # HTML 버튼 역할을 하는 <span> 생성.
+                # 클릭 시, 숨겨진 폼의 submit 버튼을 트리거하고 클릭된 단어를 hidden input에 담아 전달합니다.
+                html_all.append(
+                    f'<span class="{css}" onclick="document.getElementById(\'hidden_word\').value=\'{tok}\'; document.querySelector(\'[data-testid="stForm"] button[type="submit"]\').click();">'
+                    f'{tok}'
+                    f'</span>'
+                )
 
+            else:
+                # 구두점 또는 공백인 경우: 일반 <span>으로 렌더링 (파란색화 방지)
+                html_all.append(f'<span class="word-punctuation">{tok}</span>')
+
+        html_all.append('</div>')
+        
+        st.markdown("".join(html_all), unsafe_allow_html=True)
+        
+        # 폼 제출 시 클릭된 단어를 저장할 숨겨진 Input
+        clicked_word_input = st.text_input("Hidden Clicked Word", key='hidden_word', label_visibility="collapsed")
+        
+        # 숨겨진 Submit 버튼. 이 버튼이 눌리면 Python 코드가 재실행됨.
+        submitted = st.form_submit_button("Submit Hidden Form", type="primary")
+
+    # 폼 제출 후 로직 처리
+    if submitted and clicked_word_input:
+        st.session_state.clicked_word = clicked_word_input
+        # 로드할 단어를 세션 상태에 추가
+        if clicked_word_input not in st.session_state.selected_words:
+            st.session_state.selected_words.append(clicked_word_input)
+        # st.rerun()은 submit_button이 눌리면 자동으로 발생함.
 
     # 초기화 버튼
     st.markdown("---")
@@ -196,7 +181,6 @@ with left:
         st.session_state.selected_words = []
         st.session_state.clicked_word = None
         st.session_state.word_info = {}
-        st.experimental_set_query_params() 
         st.rerun()
 
 # --- 3.2. 단어 상세 정보 로드 ---
@@ -231,7 +215,6 @@ with right:
             st.divider()
 
             ko_meanings = info.get("ko_meanings", [])
-            # 예문 개수 제한은 이미 fetch_from_gemini에서 처리됨
             examples = info.get("examples", [])
 
             if ko_meanings:

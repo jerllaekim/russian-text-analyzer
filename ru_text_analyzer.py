@@ -17,7 +17,6 @@ if "clicked_word" not in st.session_state:
     st.session_state.clicked_word = None
 if "word_info" not in st.session_state:
     st.session_state.word_info = {}
-# manual_search_word는 st.text_input의 key로 사용
 if "manual_search_word" not in st.session_state:
     st.session_state.manual_search_word = ""
 
@@ -53,44 +52,48 @@ def fetch_from_gemini(word, lemma):
     res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
     text = res.text.strip()
     
-    if text.startswith("```"):
-        text = text.strip("`")
-        lines = text.splitlines()
-        if lines and lines[0].lower().startswith("json"):
-            text = "\n".join(lines[1:])
-        elif lines:
-             text = "\n".join(lines)
-             
+    # --- [JSON 파싱 로직 강화] ---
     try:
-        data = json.loads(text)
+        # 1. Markdown 코드 블록 제거
+        if text.startswith("```"):
+            text = text.strip("`")
+            lines = text.splitlines()
+            if lines and lines[0].lower().startswith("json"):
+                text = "\n".join(lines[1:])
+            elif lines:
+                 text = "\n".join(lines)
+                 
+        # 2. JSON 문자열의 시작(첫 '{')과 끝(마지막 '}') 인덱스 찾기
+        start_index = text.find('{')
+        end_index = text.rfind('}')
+        
+        if start_index != -1 and end_index != -1 and end_index > start_index:
+            json_text = text[start_index : end_index + 1]
+        else:
+            json_text = text
+            
+        data = json.loads(json_text)
+        
+        # 3. 예문 개수 제한 로직
         if 'examples' in data and len(data['examples']) > 2:
             data['examples'] = data['examples'][:2]
         return data
+    
     except json.JSONDecodeError:
-        st.error(f"Gemini 응답을 JSON으로 디코딩하는 데 실패했습니다: {text[:100]}...")
-        return {"ko_meanings": ["응답 오류"], "examples": []}
+        st.error(f"Gemini 응답을 JSON으로 디코딩하는 데 실패했습니다. 원본 텍스트 시작: {text[:100]}...")
+        # 디코딩 실패 시 JSON 형식을 강제로 반환
+        return {"ko_meanings": ["JSON 파싱 오류"], "examples": []}
 
 # ---------------------- 2. 전역 스타일 및 JavaScript 정의 ----------------------
 
-# JavaScript: 단어 클릭 시 하단의 검색창에 텍스트를 입력하고 Streamlit을 재실행합니다.
-# **클릭된 단어를 세션 상태에 저장하고 재실행시키는 트릭**
+# JavaScript: 단어 클릭 시 클립보드에 텍스트 복사
 st.markdown("""
 <script>
     function setClickedWordAndRerun(word) {
-        // Streamlit 위젯의 Key를 찾아 값을 업데이트하는 방식으로 변경
-        // 이 방법은 Streamlit의 내부 API에 의존하여 불안정할 수 있으므로, 
-        // Python에서 st.session_state를 직접 업데이트하는 방식을 사용합니다.
-        
-        // 여기서는 단어를 복사하거나 검색창에 값을 넣는 것만 JS로 처리합니다.
-        // **복사 기능 구현**
+        // 클립보드에 단어 복사
         navigator.clipboard.writeText(word);
-        
-        // Streamlit의 텍스트 인풋 필드에 값을 직접 넣는 것은 세션 상태 업데이트 문제 때문에 불안정합니다.
-        // 대신, alert으로 복사되었음을 알립니다.
-        alert(`'${word}'가 클립보드에 복사되었습니다. 하단 검색창에 붙여넣으세요.`);
+        alert(`'${word}'가 클립보드에 복사되었습니다. 위 검색창에 붙여넣으세요.`);
     }
-    
-    // 이전에 사용하던, 텍스트 인풋 필드를 직접 조작하는 JS는 제거합니다.
 </script>
 """, unsafe_allow_html=True)
 
@@ -112,7 +115,7 @@ st.markdown("""
         text-decoration: underline;
     }
     
-    /* 2. 파란색 글씨화 (선택/검색된 단어) - HTML에 직접 클래스 삽입 */
+    /* 2. 파란색 글씨화 (선택/검색된 단어) */
     .word-selected {
         color: #007bff !important; 
         font-weight: bold;
@@ -137,12 +140,11 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# ---------------------- 3. 직접 단어 검색 (상단으로 이동) ----------------------
+# ---------------------- 3. 직접 단어 검색 (상단) 및 처리 로직 ----------------------
 st.divider()
 st.subheader("🔍 직접 단어 검색")
 
 # 검색 입력 필드 (key를 사용하여 세션 상태에 바인딩)
-# 입력 시 st.session_state.manual_search_word가 업데이트되고 재실행됨.
 manual_input = st.text_input("단어 직접 입력", key="manual_search_word")
 
 # 검색 입력 처리 로직
@@ -178,9 +180,12 @@ if manual_input:
         for ex in examples:
             st.markdown(f"- **{ex.get('ru','')}**")
             st.markdown(f" → {ex.get('ko','')}")
+    
+    st.markdown("---") # 검색 결과 구분선
+
+
 # ---------------------- 4. 메인 텍스트 및 레이아웃 ----------------------
 
-st.divider()
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка. Хорошо.", height=150)
 # 단어, 구두점, 공백을 모두 토큰으로 분리
 tokens_with_punct = re.findall(r"(\w+|[^\s\w]+|\s+)", text, flags=re.UNICODE)
@@ -227,33 +232,21 @@ with left:
         st.session_state.manual_search_word = ""
         st.rerun()
 
-# --- 4.2. 단어 상세 정보 로드 ---
+# --- 4.2. 단어 상세 정보 로드 (클릭/검색 시) ---
 
-current_token = st.session_state.clicked_word
-
-if current_token:
-    tok = current_token
-    lemma = lemmatize_ru(tok)
-    
-    # 정보 로드 로직
-    if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != tok:
-        with st.spinner(f"'{tok}'의 정보를 불러오는 중... (Gemini API 호출)"):
-            try:
-                info = fetch_from_gemini(tok, lemma)
-                st.session_state.word_info[lemma] = {**info, "loaded_token": tok} 
-            except Exception as e:
-                st.error(f"단어 정보 로드 오류: {e}")
-
+# 현재는 manual_input에 의해 clicked_word가 업데이트되므로 이 로직은 유지됨.
 
 # --- 4.3. 단어 상세 정보 (right 컬럼) ---
 with right:
     st.subheader("단어 상세 정보")
     
+    current_token = st.session_state.clicked_word
+    
     if current_token:
         lemma = lemmatize_ru(current_token)
         info = st.session_state.word_info.get(lemma, {})
 
-        if info:
+        if info and "ko_meanings" in info:
             st.markdown(f"### **{current_token}**")
             st.markdown(f"**기본형 (Lemma):** *{lemma}*")
             st.divider()
@@ -274,13 +267,15 @@ with right:
             else:
                 if ko_meanings and ko_meanings[0].startswith(f"'{current_token}'의 API 키 없음"):
                      st.warning("API 키가 설정되지 않아 예문을 불러올 수 없습니다.")
+                elif ko_meanings[0] == "JSON 파싱 오류":
+                     st.error("Gemini API에서 예상치 못한 형식이 반환되었습니다.")
                 else:
                     st.info("예문 정보가 없습니다.")
         else:
             st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
             
     else:
-        st.info("왼쪽 텍스트에서 단어를 클릭하거나, 위 검색창을 이용해주세요.")
+        st.info("왼쪽 텍스트에서 단어를 클릭하고 붙여넣거나, 위 검색창을 이용해주세요.")
 
 # ---------------------- 5. 하단: 누적 목록 + CSV ----------------------
 st.divider()

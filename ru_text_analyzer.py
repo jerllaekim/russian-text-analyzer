@@ -35,12 +35,12 @@ def lemmatize_ru(word: str) -> str:
 api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
 client = genai.Client(api_key=api_key) if api_key else None
 
-SYSTEM_PROMPT = "너는 러시아어-한국어 학습을 돕는 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 최대 두 개만 제공한다. 반드시 JSON만 출력한다."
+SYSTEM_PROMPT = "너는 러시아어-한국어 학습을 돕는 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 품사, 그리고고 예문을 최대 두 개만 제공한다. 반드시 JSON만 출력한다."
 def make_prompt(word, lemma):
     return f"""{SYSTEM_PROMPT}
 단어: {word}
 기본형: {lemma}
-{{ "ko_meanings": ["뜻1", "뜻2"], "examples": [ {{"ru": "예문1", "ko": "번역1"}}, {{"ru": "예문2", "ko": "번역2"}} ] }}
+{{ "ko_meanings": ["품사","뜻1", "뜻2"], "examples": [ {{"ru": "예문1", "ko": "번역1"}}, {{"ru": "예문2", "ko": "번역2"}} ] }}
 """
 
 @st.cache_data(show_spinner=False)
@@ -264,7 +264,7 @@ if word_info:
             info = word_info[lemma]
             if info.get("ko_meanings") and info["ko_meanings"][0] != "JSON 파싱 오류":
                 short = "; ".join(info["ko_meanings"][:2])
-                rows.append({"기본형": lemma, "대표 뜻": short})
+                rows.append({"기본형": lemma, "품사, 대표 뜻": short})
                 processed_lemmas.add(lemma)
 
     if rows:

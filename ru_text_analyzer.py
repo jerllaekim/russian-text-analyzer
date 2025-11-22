@@ -6,12 +6,24 @@ import pandas as pd
 from pymystem3 import Mystem
 from google import genai
 
-# (초기 설정 및 세션 상태, Gemini 연동 함수는 이전과 동일)
+# (초기 설정 및 Gemini 연동 함수는 이전과 동일)
 # ... (생략) ...
+st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
+st.title("🇷🇺 러시아어 텍스트 분석기")
+
+if "selected_words" not in st.session_state:
+    st.session_state.selected_words = []
+if "clicked_word" not in st.session_state:
+    st.session_state.clicked_word = None
+if "word_info" not in st.session_state:
+    st.session_state.word_info = {}
+if "manual_search_word" not in st.session_state:
+    st.session_state.manual_search_word = ""
+
+mystem = Mystem()
 
 @st.cache_data(show_spinner=False)
 def lemmatize_ru(word: str) -> str:
-    """단어의 기본형(lemma)을 추출합니다."""
     if re.fullmatch(r'\w+', word, flags=re.UNICODE):
         lemmas = mystem.lemmatize(word)
         return (lemmas[0] if lemmas else word).strip()
@@ -65,25 +77,30 @@ def fetch_from_gemini(word, lemma):
         return {"ko_meanings": ["JSON 파싱 오류"], "examples": []}
 
 
-# ---------------------- 2. 전역 스타일 및 JavaScript 정의 (복사 기능 제거) ----------------------
+# ---------------------- 2. 전역 스타일 및 JavaScript 정의 (자동 선택 기능) ----------------------
 
-# JavaScript: 단어 클릭 시 검색창에 텍스트를 채우고, 이벤트(input)를 발생시켜 Streamlit의 재실행을 유도합니다.
+# JavaScript: 단어 클릭 시, 숨겨진 입력 필드에 단어를 넣고 전체 선택 후, 검색창에 자동으로 넣습니다.
 st.markdown("""
 <script>
-    function setManualSearchWordAndRerun(word) {
-        // '단어 직접 입력' 필드를 찾습니다. (ARIA-LABEL 기반)
+    function selectTextForCopy(word) {
+        // 1. 숨겨진 복사 필드를 찾습니다. (key="hidden_copy_field"로 지정될 필드)
+        const copyField = document.querySelector('[aria-label="Hidden Copy Field"]');
+        
+        if (copyField) {
+            // 2. 값을 설정하고 전체 선택합니다.
+            copyField.value = word;
+            copyField.select(); // 텍스트를 선택 상태로 만듭니다.
+            
+            // 3. (선택 사항) 사용자에게 Ctrl+C를 누르도록 알림
+            alert(`'${word}'가 선택되었습니다. Ctrl+C (Cmd+C)를 눌러 복사 후, 위 검색창에 붙여넣으세요.`);
+        }
+        
+        // 4. 자동 검색 필드에 값 입력 시도 (이전 자동 검색 로직)
         const inputField = document.querySelector('[aria-label="단어 직접 입력"]');
         if (inputField) {
-            // 1. 값을 설정합니다.
             inputField.value = word;
-            
-            // 2. 'input' 이벤트를 강제 발생시켜 Streamlit에게 값이 변경되었음을 알립니다.
-            //    이것이 Python 세션 상태를 업데이트하고 페이지를 재실행(RERUN)하도록 유도합니다.
             const event = new Event('input', { bubbles: true });
             inputField.dispatchEvent(event);
-        } else {
-             // 3. 필드를 찾지 못하면 사용자에게 알립니다.
-             alert(`죄송합니다. 자동 검색 필드를 찾지 못했습니다. 앱을 새로고침해 주세요.`);
         }
     }
 </script>
@@ -91,7 +108,13 @@ st.markdown("""
 
 st.markdown("""
 <style>
-    /* (CSS 스타일은 이전과 동일) */
+    /* 1. 복사/검색 자동 입력을 위한 숨겨진 필드 */
+    /* stTextInput의 컨테이너를 숨깁니다. */
+    div[data-testid="stTextInput"]:has(input[aria-label="Hidden Copy Field"]) {
+        display: none;
+    }
+
+    /* 2. (나머지 CSS는 이전과 동일) */
     .word-span {
         cursor: pointer;
         padding: 0px 0px;
@@ -133,8 +156,13 @@ st.markdown("""
 st.divider()
 st.subheader("🔍 직접 단어 검색")
 
+# ❗ 숨겨진 복사/선택 필드: CSS로 숨겨집니다.
+st.text_input("Hidden Copy Field", key="hidden_copy_field", label_visibility="collapsed") 
+
+# 검색 입력 필드 
 manual_input = st.text_input("단어 직접 입력", key="manual_search_word")
 
+# 검색 입력 처리 로직
 if manual_input:
     if manual_input not in st.session_state.selected_words:
         st.session_state.selected_words.append(manual_input)
@@ -148,7 +176,6 @@ if manual_input:
     try:
         info = fetch_from_gemini(manual_input, lemma)
         
-        # 검색된 단어의 정보를 세션 상태에 저장하여 하단 목록에 추가되도록 함
         if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != manual_input:
              st.session_state.word_info[lemma] = {**info, "loaded_token": manual_input} 
         
@@ -191,13 +218,12 @@ with left:
             is_selected = tok in st.session_state.selected_words
             css = "word-span"
             
-            # 파란색 글씨 유지: 선택된 단어에 클래스를 직접 삽입
             if is_selected:
                 css += " word-selected"
             
-            # onclick: JavaScript 함수 호출 (클릭 시 자동 검색 시도)
+            # onclick: JavaScript 함수 호출 (단어를 숨겨진 필드에 넣어 자동 선택)
             html_all.append(
-                f'<span class="{css}" onclick="setManualSearchWordAndRerun(\'{tok}\');">'
+                f'<span class="{css}" onclick="selectTextForCopy(\'{tok}\');">'
                 f'{tok}'
                 f'</span>'
             )
@@ -249,7 +275,7 @@ with right:
                     st.markdown(f" → {ex.get('ko', '')}")
             else:
                 if ko_meanings and ko_meanings[0] == "JSON 파싱 오류":
-                     st.error("Gemini API에서 예상치 못한 형식이 반환되어 정보 표시 오류가 발생했습니다.")
+                     st.error("Gemini API 정보 오류.")
                 elif ko_meanings and ko_meanings[0].startswith(f"'{current_token}'의 API 키 없음"):
                      st.warning("API 키가 설정되지 않아 예문을 불러올 수 없습니다.")
                 else:
@@ -258,7 +284,7 @@ with right:
             st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
             
     else:
-        st.info("왼쪽 텍스트에서 단어를 클릭하여 자동 검색을 시도하거나, 위 검색창을 이용해주세요.")
+        st.info("왼쪽 텍스트에서 단어를 클릭하고 복사(Ctrl+C)하여 위 검색창을 이용해주세요.")
 
 # ---------------------- 5. 하단: 누적 목록 + CSV ----------------------
 st.divider()

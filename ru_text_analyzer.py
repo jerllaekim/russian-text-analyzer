@@ -39,8 +39,8 @@ SYSTEM_PROMPT = "너는 러시아어-한국어 학습을 돕는 도우미이다.
 def make_prompt(word, lemma):
     return f"""{SYSTEM_PROMPT}
 단어: {word}
-기본형: {lemma}
-{{ "ko_meanings": ["품사","뜻1", "뜻2"], "examples": [ {{"ru": "예문1", "ko": "번역1"}}, {{"ru": "예문2", "ko": "번역2"}} ] }}
+기본형: {lemma,(품사)}
+{{ "ko_meanings": ["뜻1", "뜻2"], "examples": [ {{"ru": "예문1", "ko": "번역1"}}, {{"ru": "예문2", "ko": "번역2"}} ] }}
 """
 
 @st.cache_data(show_spinner=False)
@@ -264,7 +264,7 @@ if word_info:
             info = word_info[lemma]
             if info.get("ko_meanings") and info["ko_meanings"][0] != "JSON 파싱 오류":
                 short = "; ".join(info["ko_meanings"][:2])
-                rows.append({"기본형": lemma, "품사, 대표 뜻": short})
+                rows.append({"기본형": lemma, "(품사), 대표 뜻": short})
                 processed_lemmas.add(lemma)
 
     if rows:

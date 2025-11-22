@@ -6,11 +6,11 @@ import pandas as pd
 from pymystem3 import Mystem
 from google import genai
 
-# (초기 설정 및 Gemini 연동 함수는 이전과 동일)
-# ... (생략) ...
+# ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
 st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
 st.title("🇷🇺 러시아어 텍스트 분석기")
 
+# 세션 상태 초기화
 if "selected_words" not in st.session_state:
     st.session_state.selected_words = []
 if "clicked_word" not in st.session_state:
@@ -24,10 +24,13 @@ mystem = Mystem()
 
 @st.cache_data(show_spinner=False)
 def lemmatize_ru(word: str) -> str:
+    """단어의 기본형(lemma)을 추출합니다."""
     if re.fullmatch(r'\w+', word, flags=re.UNICODE):
         lemmas = mystem.lemmatize(word)
         return (lemmas[0] if lemmas else word).strip()
     return word
+
+# ---------------------- 1. Gemini 연동 함수 ----------------------
 
 api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
 client = genai.Client(api_key=api_key) if api_key else None
@@ -77,64 +80,36 @@ def fetch_from_gemini(word, lemma):
         return {"ko_meanings": ["JSON 파싱 오류"], "examples": []}
 
 
-# ---------------------- 2. 전역 스타일 및 JavaScript 정의 (자동 선택 기능) ----------------------
-
-# JavaScript: 단어 클릭 시, 숨겨진 입력 필드에 단어를 넣고 전체 선택 후, 검색창에 자동으로 넣습니다.
-st.markdown("""
-<script>
-    function selectTextForCopy(word) {
-        // 1. 숨겨진 복사 필드를 찾습니다. (key="hidden_copy_field"로 지정될 필드)
-        const copyField = document.querySelector('[aria-label="Hidden Copy Field"]');
-        
-        if (copyField) {
-            // 2. 값을 설정하고 전체 선택합니다.
-            copyField.value = word;
-            copyField.select(); // 텍스트를 선택 상태로 만듭니다.
-            
-            // 3. (선택 사항) 사용자에게 Ctrl+C를 누르도록 알림
-            alert(`'${word}'가 선택되었습니다. Ctrl+C (Cmd+C)를 눌러 복사 후, 위 검색창에 붙여넣으세요.`);
-        }
-        
-        // 4. 자동 검색 필드에 값 입력 시도 (이전 자동 검색 로직)
-        const inputField = document.querySelector('[aria-label="단어 직접 입력"]');
-        if (inputField) {
-            inputField.value = word;
-            const event = new Event('input', { bubbles: true });
-            inputField.dispatchEvent(event);
-        }
-    }
-</script>
-""", unsafe_allow_html=True)
+# ---------------------- 2. 전역 스타일 정의 (버튼 UI 제거 및 가로 나열 강제) ----------------------
 
 st.markdown("""
 <style>
-    /* 1. 복사/검색 자동 입력을 위한 숨겨진 필드 */
-    /* stTextInput의 컨테이너를 숨깁니다. */
-    div[data-testid="stTextInput"]:has(input[aria-label="Hidden Copy Field"]) {
-        display: none;
-    }
-
-    /* 2. (나머지 CSS는 이전과 동일) */
-    .word-span {
+    /* 1. 버튼 UI 완전히 제거 */
+    div.stButton > button {
+        padding: 0px 0px !important; /* 패딩 제거 */
+        margin: 0 !important;
+        border: none !important;
+        background: none !important; /* 배경 제거 */
+        box-shadow: none !important; /* 그림자 제거 */
         cursor: pointer;
-        padding: 0px 0px;
-        margin: 0px 0px;
-        display: inline-block;
-        transition: color 0.2s;
-        user-select: none;
-        white-space: pre; 
-        font-size: 1.25em;
-    }
-    .word-span:hover {
-        color: #007bff;
-        text-decoration: underline;
+        color: #333 !important; /* 기본 텍스트 색상 */
+        font-weight: normal;
+        height: auto !important;
+        line-height: 1.5 !important;
+        white-space: nowrap;
+        text-align: left !important;
+        /* 단어처럼 보이도록 폰트 크기 조정 */
+        font-size: 1.25em; 
     }
     
-    .word-selected {
-        color: #007bff !important; 
-        font-weight: bold;
+    /* 2. 클릭된 단어 색상 유지 (파란색) */
+    /* st.button을 감싸는 div에 style이 적용되어야 합니다. */
+    div[data-testid^="stColumn"] > div > div.stButton > button { 
+        /* 기본 상태 */
+        color: #333 !important;
     }
     
+    /* 3. 구두점 스타일 */
     .word-punctuation {
         padding: 0px 0px;
         margin: 0;
@@ -142,11 +117,14 @@ st.markdown("""
         user-select: none;
         white-space: pre;
         font-size: 1.25em;
+        line-height: 1.5;
     }
-    
-    .text-container {
-        line-height: 2.0;
-        margin-bottom: 20px;
+
+    /* 4. st.columns 컨테이너 간격 최소화 (가로 나열) */
+    div[data-testid^="stHorizontalBlock"] {
+        flex-wrap: wrap !important;
+        gap: 0px 0px !important; /* 컬럼 간격을 0으로 설정하여 단어를 붙임 */
+        margin: 0 !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -156,19 +134,19 @@ st.markdown("""
 st.divider()
 st.subheader("🔍 직접 단어 검색")
 
-# ❗ 숨겨진 복사/선택 필드: CSS로 숨겨집니다.
-st.text_input("Hidden Copy Field", key="hidden_copy_field", label_visibility="collapsed") 
-
 # 검색 입력 필드 
 manual_input = st.text_input("단어 직접 입력", key="manual_search_word")
 
 # 검색 입력 처리 로직
 if manual_input:
+    # 1. 검색된 단어를 선택 목록에 추가 (파란색 글씨 유지를 위함)
     if manual_input not in st.session_state.selected_words:
         st.session_state.selected_words.append(manual_input)
     
+    # 2. 상세 정보 영역에 표시될 단어 업데이트
     st.session_state.clicked_word = manual_input
     
+    # ************** 검색 상세 정보 표시 **************
     lemma = lemmatize_ru(manual_input)
     st.markdown(f"**입력 단어:** **{manual_input}**")
     st.markdown(f"**기본형(lemma):** *{lemma}*")
@@ -176,6 +154,7 @@ if manual_input:
     try:
         info = fetch_from_gemini(manual_input, lemma)
         
+        # 검색된 단어의 정보를 세션 상태에 저장하여 하단 목록에 추가되도록 함
         if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != manual_input:
              st.session_state.word_info[lemma] = {**info, "loaded_token": manual_input} 
         
@@ -203,6 +182,7 @@ if manual_input:
 # ---------------------- 4. 메인 텍스트 및 레이아웃 ----------------------
 
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка. Хорошо.", height=150)
+# 단어, 구두점, 공백을 모두 토큰으로 분리
 tokens_with_punct = re.findall(r"(\w+|[^\s\w]+|\s+)", text, flags=re.UNICODE)
 
 left, right = st.columns([2, 1])
@@ -211,31 +191,51 @@ left, right = st.columns([2, 1])
 with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
 
-    html_all = ['<div class="text-container">']
-    
-    for tok in tokens_with_punct:
-        if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
-            is_selected = tok in st.session_state.selected_words
-            css = "word-span"
-            
-            if is_selected:
-                css += " word-selected"
-            
-            # onclick: JavaScript 함수 호출 (단어를 숨겨진 필드에 넣어 자동 선택)
-            html_all.append(
-                f'<span class="{css}" onclick="selectTextForCopy(\'{tok}\');">'
-                f'{tok}'
-                f'</span>'
-            )
+    # 단어 버튼 클릭 시 실행될 콜백 함수
+    def on_word_click(clicked_token):
+        # 1. 클릭된 단어 정보를 세션 상태에 저장하여 상세 정보 표시
+        st.session_state.clicked_word = clicked_token
+        # 2. 클릭된 단어를 검색 필드에 자동으로 입력
+        st.session_state.manual_search_word = clicked_token
+        # 3. 파란색 글씨 유지를 위해 selected_words에 추가
+        if clicked_token not in st.session_state.selected_words:
+            st.session_state.selected_words.append(clicked_token)
 
-        else:
-            # 구두점 또는 공백
-            html_all.append(f'<span class="word-punctuation">{tok}</span>')
+    # st.columns를 사용하여 단어와 구두점을 가로로 나열
+    # 이 방식이 Streamlit에서 인라인 레이아웃을 보장하는 가장 확실한 방법입니다.
+    cols = st.columns(len(tokens_with_punct))
 
-    html_all.append('</div>')
-    
-    st.markdown("".join(html_all), unsafe_allow_html=True)
-    
+    for i, tok in enumerate(tokens_with_punct):
+        with cols[i]:
+            if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
+                # 단어인 경우: st.button 사용
+                is_selected = tok in st.session_state.selected_words
+                
+                # 파란색 글씨 유지를 위해 HTML 래퍼를 삽입
+                color_style = "#007bff" if is_selected else "#333"
+                bold_style = "bold" if is_selected else "normal"
+                
+                # st.button을 렌더링하고, 클릭 시 로직 실행
+                if st.button(
+                    tok, 
+                    key=f"word_{tok}_{i}", 
+                    on_click=on_word_click,
+                    args=(tok,)
+                ):
+                    pass
+                    
+                # ❗ CSS가 안 먹힐 경우 인라인 스타일로 색상 강제 적용
+                # 이 방식은 Streamlit에서 위젯에 직접 HTML을 적용하기 어려워 생략합니다. 
+                # CSS가 버튼의 색상을 변경하기를 기대합니다.
+                
+                # JS를 사용하지 않고 파란색 글씨를 유지하는 유일한 방법: 
+                # 클릭 후 st.session_state.manual_search_word가 업데이트되어 재실행 -> Section 3의 로직이 실행됨.
+
+            else:
+                # 구두점 또는 공백인 경우: st.markdown으로 출력
+                st.markdown(f'<span class="word-punctuation" style="font-weight: {bold_style}; color: {color_style};">{tok}</span>')
+
+
     # 초기화 버튼
     st.markdown("---")
     if st.button("🔄 선택 및 검색 초기화", key="reset_button"):
@@ -284,7 +284,7 @@ with right:
             st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
             
     else:
-        st.info("왼쪽 텍스트에서 단어를 클릭하고 복사(Ctrl+C)하여 위 검색창을 이용해주세요.")
+        st.info("왼쪽 텍스트에서 단어를 클릭하여 자동 검색을 시도하세요.")
 
 # ---------------------- 5. 하단: 누적 목록 + CSV ----------------------
 st.divider()

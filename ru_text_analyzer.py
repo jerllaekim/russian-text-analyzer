@@ -22,6 +22,24 @@ if "current_search_query" not in st.session_state:
 
 mystem = Mystem()
 
+# ---------------------- 품사 변환 딕셔너리 ----------------------
+POS_MAP = {
+    'S': '명사',       # noun
+    'V': '동사',       # verb
+    'A': '형용사',     # adjective
+    'ADV': '부사',     # adverb
+    'PR': '전치사',     # preposition
+    'CONJ': '접속사',   # conjunction
+    'INTJ': '감탄사',   # interjection
+    'PART': '불변화사',  # particle
+    'NUM': '수사',       # numeral
+    'APRO': '대명사적 형용사', # pronominal adjective (e.g. мой)
+    'ANUM': '서수사',    # ordinal numeral (e.g. первый)
+    'SPRO': '대명사',    # substantive pronoun (e.g. я)
+    # 기타 약어는 '품사'로 통일하여 안정성 확보
+}
+
+
 @st.cache_data(show_spinner=False)
 def lemmatize_ru(word: str) -> str:
     """단어의 기본형(lemma)을 추출합니다."""
@@ -32,18 +50,15 @@ def lemmatize_ru(word: str) -> str:
 
 @st.cache_data(show_spinner=False)
 def get_pos_ru(word: str) -> str:
-    """단어의 품사(POS)를 추출합니다."""
+    """단어의 품사(POS)를 추출하여 한글로 반환합니다."""
     if re.fullmatch(r'\w+', word, flags=re.UNICODE):
-        # Mystem은 형태소 분석 결과를 XML 형태로 반환합니다.
         analysis = mystem.analyze(word)
         if analysis and 'analysis' in analysis[0] and analysis[0]['analysis']:
-            # analysis[0]['analysis'][0]['gr']에서 품사 정보 추출
             grammar_info = analysis[0]['analysis'][0]['gr']
-            # 품사(POS)는 보통 쉼표나 등호 이전에 옵니다.
-            pos = grammar_info.split('=')[0].split(',')[0]
-            # 약어를 한국어로 변환하거나 그대로 반환 (여기서는 약어 그대로 반환)
-            return pos.upper()
-    return "알 수 없음"
+            # 품사(POS) 약어 추출 (쉼표나 등호 이전)
+            pos_abbr = grammar_info.split('=')[0].split(',')[0].strip()
+            return POS_MAP.get(pos_abbr, '품사')
+    return '품사' # 기본값으로 '품사' 반환
 
 # ---------------------- 1. Gemini 연동 함수 ----------------------
 
@@ -209,7 +224,6 @@ with left:
         st.session_state.clicked_word = None
         st.session_state.word_info = {}
         st.session_state.current_search_query = ""
-        # 텍스트 에어리어의 내용도 초기 문장으로 리셋
         st.session_state.input_text_area = "Человек идёт по улице. Это тестовая строка. Хорошо."
 
 
@@ -232,10 +246,10 @@ with right:
         info = st.session_state.word_info.get(lemma, {})
 
         if info and "ko_meanings" in info:
-            pos = info.get("pos", "알 수 없음") # 품사 정보 로드
+            pos = info.get("pos", "품사") # 품사 정보 로드
             
             st.markdown(f"### **{current_token}**")
-            st.markdown(f"**기본형 (Lemma):** *{lemma}* ({pos})") # 품사 표시
+            st.markdown(f"**기본형 (Lemma):** *{lemma}* ({pos})") # ⬅️ 품사 표시
             st.divider()
 
             ko_meanings = info.get("ko_meanings", [])
@@ -280,12 +294,11 @@ if word_info:
         if lemma not in processed_lemmas and lemma in word_info:
             info = word_info[lemma]
             if info.get("ko_meanings") and info["ko_meanings"][0] != "JSON 파싱 오류":
-                pos = info.get("pos", "") # 품사 정보 로드
+                pos = info.get("pos", "품사") # 품사 정보 로드
                 
                 # 품사 정보를 뜻 뒤에 (품사) 형태로 추가
                 short = "; ".join(info["ko_meanings"][:2])
-                if pos:
-                    short = f"{short} ({pos})"
+                short = f"{short} ({pos})" # ⬅️ 품사 추가
 
                 rows.append({"기본형": lemma, "대표 뜻": short})
                 processed_lemmas.add(lemma)

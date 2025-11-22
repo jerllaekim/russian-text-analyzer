@@ -299,12 +299,12 @@ with right:
                      st.error("Gemini API 정보 오류.")
                 elif ko_meanings and ko_meanings[0].startswith(f"'{current_token}'의 API 키 없음"):
  # ---------------------- 7. 저작권 표시 (페이지 최하단) ----------------------
-st.markdown("---")
-st.markdown("""
-<div class="footer">
-    이 페이지는 연세대학교 노어노문학과 25-2 러시아어 교육론 5팀의 프로젝트 결과물**입니다. 
-    <br>
-    본 페이지의 내용, 기능 및 데이터를 학습 목적 이외의 용도로 무단 복제, 배포, 상업적 이용할 경우, 
-    관련 법령에 따라 민사상 손해배상 청구 및 형사상 처벌을 받을 수 있습니다.
-</div>
-""", unsafe_allow_html=True)
+                    st.markdown("---")
+                    st.markdown("""
+                        <div class="footer">
+                        이 페이지는 연세대학교 노어노문학과 25-2 러시아어 교육론 5팀의 프로젝트 결과물**입니다. 
+                        <br>
+                        본 페이지의 내용, 기능 및 데이터를 학습 목적 이외의 용도로 무단 복제, 배포, 상업적 이용할 경우, 
+                        관련 법령에 따라 민사상 손해배상 청구 및 형사상 처벌을 받을 수 있습니다.
+                            </div>
+                                """, unsafe_allow_html=True)

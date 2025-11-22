@@ -17,6 +17,7 @@ if "clicked_word" not in st.session_state:
     st.session_state.clicked_word = None
 if "word_info" not in st.session_state:
     st.session_state.word_info = {}
+# manual_search_word는 st.text_input의 key로 사용
 if "manual_search_word" not in st.session_state:
     st.session_state.manual_search_word = ""
 
@@ -66,29 +67,30 @@ def fetch_from_gemini(word, lemma):
             data['examples'] = data['examples'][:2]
         return data
     except json.JSONDecodeError:
-        # 오류 발생 시 디버깅 정보를 출력하고 빈 목록 반환
         st.error(f"Gemini 응답을 JSON으로 디코딩하는 데 실패했습니다: {text[:100]}...")
         return {"ko_meanings": ["응답 오류"], "examples": []}
 
 # ---------------------- 2. 전역 스타일 및 JavaScript 정의 ----------------------
 
 # JavaScript: 단어 클릭 시 하단의 검색창에 텍스트를 입력하고 Streamlit을 재실행합니다.
+# **클릭된 단어를 세션 상태에 저장하고 재실행시키는 트릭**
 st.markdown("""
 <script>
-    function setManualSearchWord(word) {
-        // Streamlit 텍스트 입력 위젯의 ID를 찾습니다. (가장 마지막의 st-cc-N-N)
-        // 여기서는 직접 ID를 찾지 않고, Streamlit의 내부 JS API를 통해 세션 상태를 업데이트하는 
-        // 꼼수를 사용하는 것이 가장 안정적입니다. (단, Streamlit 내부 JS API가 변경될 수 있음)
+    function setClickedWordAndRerun(word) {
+        // Streamlit 위젯의 Key를 찾아 값을 업데이트하는 방식으로 변경
+        // 이 방법은 Streamlit의 내부 API에 의존하여 불안정할 수 있으므로, 
+        // Python에서 st.session_state를 직접 업데이트하는 방식을 사용합니다.
         
-        // 텍스트 입력 필드의 고유 ID를 찾기 위한 트릭
-        const inputField = document.querySelector('[data-testid="stTextInput"] input[aria-label="단어 직접 입력"]');
-        if (inputField) {
-            inputField.value = word;
-            // Input 이벤트 강제 발생 (Streamlit에 변경 사항을 알림)
-            const event = new Event('input', { bubbles: true });
-            inputField.dispatchEvent(event);
-        }
+        // 여기서는 단어를 복사하거나 검색창에 값을 넣는 것만 JS로 처리합니다.
+        // **복사 기능 구현**
+        navigator.clipboard.writeText(word);
+        
+        // Streamlit의 텍스트 인풋 필드에 값을 직접 넣는 것은 세션 상태 업데이트 문제 때문에 불안정합니다.
+        // 대신, alert으로 복사되었음을 알립니다.
+        alert(`'${word}'가 클립보드에 복사되었습니다. 하단 검색창에 붙여넣으세요.`);
     }
+    
+    // 이전에 사용하던, 텍스트 인풋 필드를 직접 조작하는 JS는 제거합니다.
 </script>
 """, unsafe_allow_html=True)
 
@@ -105,8 +107,12 @@ st.markdown("""
         white-space: pre; 
         font-size: 1.25em;
     }
+    .word-span:hover {
+        color: #007bff;
+        text-decoration: underline;
+    }
     
-    /* 2. 파란색 글씨화 (선택/검색된 단어) */
+    /* 2. 파란색 글씨화 (선택/검색된 단어) - HTML에 직접 클래스 삽입 */
     .word-selected {
         color: #007bff !important; 
         font-weight: bold;
@@ -130,16 +136,58 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ---------------------- 3. 메인 로직 및 레이아웃 ----------------------
 
-text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка.")
+# ---------------------- 3. 직접 단어 검색 (상단으로 이동) ----------------------
+st.divider()
+st.subheader("🔍 직접 단어 검색")
+
+# 검색 입력 필드 (key를 사용하여 세션 상태에 바인딩)
+# 입력 시 st.session_state.manual_search_word가 업데이트되고 재실행됨.
+manual_input = st.text_input("단어 직접 입력", key="manual_search_word")
+
+# 검색 입력 처리 로직
+if manual_input:
+    # 1. 검색된 단어를 선택 목록에 추가 (파란색 글씨 유지를 위함)
+    if manual_input not in st.session_state.selected_words:
+        st.session_state.selected_words.append(manual_input)
+    
+    # 2. 상세 정보 영역에 표시될 단어 업데이트
+    st.session_state.clicked_word = manual_input
+    
+    # ************** 검색 상세 정보 표시 **************
+    lemma = lemmatize_ru(manual_input)
+    st.markdown(f"**입력 단어:** **{manual_input}**")
+    st.markdown(f"**기본형(lemma):** *{lemma}*")
+
+    try:
+        info = fetch_from_gemini(manual_input, lemma)
+    except Exception as e:
+        st.error(f"Gemini 오류: {e}")
+        info = {}
+
+    ko_meanings = info.get("ko_meanings", [])
+    examples = info.get("examples", [])
+
+    if ko_meanings:
+        st.markdown("#### 한국어 뜻")
+        for m in ko_meanings:
+            st.markdown(f"- **{m}**")
+
+    if examples:
+        st.markdown("#### 📖 예문")
+        for ex in examples:
+            st.markdown(f"- **{ex.get('ru','')}**")
+            st.markdown(f" → {ex.get('ko','')}")
+# ---------------------- 4. 메인 텍스트 및 레이아웃 ----------------------
+
+st.divider()
+text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка. Хорошо.", height=150)
 # 단어, 구두점, 공백을 모두 토큰으로 분리
 tokens_with_punct = re.findall(r"(\w+|[^\s\w]+|\s+)", text, flags=re.UNICODE)
-# 빈 토큰은 제거하지 않습니다. (띄어쓰기를 위해)
 
 left, right = st.columns([2, 1])
 
-# --- 3.1. 단어 목록 및 클릭 처리 (left 컬럼) ---
+# --- 4.1. 단어 목록 및 클릭 처리 (left 컬럼) ---
 with left:
     st.subheader("단어 목록 (텍스트에서 추출)")
 
@@ -150,18 +198,20 @@ with left:
             # 단어인 경우: HTML <span>으로 렌더링
             is_selected = tok in st.session_state.selected_words
             css = "word-span"
+            
+            # **색상 유지 구현: 선택된 단어에 클래스를 직접 삽입**
             if is_selected:
                 css += " word-selected"
             
-            # onclick: JavaScript 함수 호출 (하단 검색창에 단어 입력)
+            # onclick: JavaScript 함수 호출 (클릭 시 복사)
             html_all.append(
-                f'<span class="{css}" onclick="setManualSearchWord(\'{tok}\');">'
+                f'<span class="{css}" onclick="setClickedWordAndRerun(\'{tok}\');">'
                 f'{tok}'
                 f'</span>'
             )
 
         else:
-            # 구두점 또는 공백인 경우: 일반 <span>으로 렌더링
+            # 구두점 또는 공백인 경우: 일반 <span>으로 렌더링 (파란색화 방지)
             html_all.append(f'<span class="word-punctuation">{tok}</span>')
 
     html_all.append('</div>')
@@ -174,12 +224,11 @@ with left:
         st.session_state.selected_words = []
         st.session_state.clicked_word = None
         st.session_state.word_info = {}
-        st.session_state.manual_search_word = "" # 검색창도 초기화
+        st.session_state.manual_search_word = ""
         st.rerun()
 
-# --- 3.2. 단어 상세 정보 로드 (클릭/검색 시) ---
+# --- 4.2. 단어 상세 정보 로드 ---
 
-# 클릭/검색된 단어 로직
 current_token = st.session_state.clicked_word
 
 if current_token:
@@ -196,7 +245,7 @@ if current_token:
                 st.error(f"단어 정보 로드 오류: {e}")
 
 
-# --- 3.3. 단어 상세 정보 (right 컬럼) ---
+# --- 4.3. 단어 상세 정보 (right 컬럼) ---
 with right:
     st.subheader("단어 상세 정보")
     
@@ -231,9 +280,9 @@ with right:
             st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
             
     else:
-        st.info("왼쪽 텍스트에서 단어를 클릭하거나, 아래 검색창을 이용해주세요.")
+        st.info("왼쪽 텍스트에서 단어를 클릭하거나, 위 검색창을 이용해주세요.")
 
-# ---------------------- 4. 하단: 누적 목록 + CSV ----------------------
+# ---------------------- 5. 하단: 누적 목록 + CSV ----------------------
 st.divider()
 st.subheader("📝 선택한 단어 모음 (기본형 기준)")
 
@@ -260,43 +309,3 @@ if word_info:
         st.download_button("💾 CSV로 저장", csv_bytes, "russian_words.csv", "text/csv")
     else:
         st.info("선택된 단어의 정보를 로드 중이거나, 표시할 정보가 없습니다.")
-
-
-# ---------------------- 5. 직접 단어 검색 (클릭 기능의 목표) ----------------------
-st.divider()
-st.subheader("🔍 직접 단어 검색")
-
-# 클릭 시 단어가 여기에 자동으로 채워집니다.
-manual_input = st.text_input("단어 직접 입력", key="manual_search_word")
-
-if manual_input:
-    # 1. 검색된 단어 세션 상태에 추가 (파란색 글씨 유지를 위함)
-    if manual_input not in st.session_state.selected_words:
-        st.session_state.selected_words.append(manual_input)
-    
-    # 2. 상세 정보 영역에 표시될 단어 업데이트
-    st.session_state.clicked_word = manual_input
-    
-    lemma = lemmatize_ru(manual_input)
-    st.markdown(f"**입력 단어:** **{manual_input}**")
-    st.markdown(f"**기본형(lemma):** *{lemma}*")
-
-    try:
-        info = fetch_from_gemini(manual_input, lemma)
-    except Exception as e:
-        st.error(f"Gemini 오류: {e}")
-        info = {}
-
-    ko_meanings = info.get("ko_meanings", [])
-    examples = info.get("examples", [])
-
-    if ko_meanings:
-        st.markdown("#### 한국어 뜻")
-        for m in ko_meanings:
-            st.markdown(f"- **{m}**")
-
-    if examples:
-        st.markdown("#### 📖 예문")
-        for ex in examples:
-            st.markdown(f"- **{ex.get('ru','')}**")
-            st.markdown(f" → {ex.get('ko','')}")

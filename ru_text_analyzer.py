@@ -8,7 +8,7 @@ from google import genai
 
 # ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
 st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
-st.title("러시아어 텍스트 분석기")
+st.title("🇷🇺 러시아어 텍스트 분석기")
 
 # 세션 상태 초기화
 if "selected_words" not in st.session_state:
@@ -30,16 +30,31 @@ def lemmatize_ru(word: str) -> str:
         return (lemmas[0] if lemmas else word).strip()
     return word
 
+@st.cache_data(show_spinner=False)
+def get_pos_ru(word: str) -> str:
+    """단어의 품사(POS)를 추출합니다."""
+    if re.fullmatch(r'\w+', word, flags=re.UNICODE):
+        # Mystem은 형태소 분석 결과를 XML 형태로 반환합니다.
+        analysis = mystem.analyze(word)
+        if analysis and 'analysis' in analysis[0] and analysis[0]['analysis']:
+            # analysis[0]['analysis'][0]['gr']에서 품사 정보 추출
+            grammar_info = analysis[0]['analysis'][0]['gr']
+            # 품사(POS)는 보통 쉼표나 등호 이전에 옵니다.
+            pos = grammar_info.split('=')[0].split(',')[0]
+            # 약어를 한국어로 변환하거나 그대로 반환 (여기서는 약어 그대로 반환)
+            return pos.upper()
+    return "알 수 없음"
+
 # ---------------------- 1. Gemini 연동 함수 ----------------------
 
 api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
 client = genai.Client(api_key=api_key) if api_key else None
 
-SYSTEM_PROMPT = "너는 러시아어-한국어 학습을 돕는 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 품사, 그리고고 예문을 최대 두 개만 제공한다. 반드시 JSON만 출력한다."
+SYSTEM_PROMPT = "너는 러시아어-한국어 학습을 돕는 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 최대 두 개만 제공한다. 반드시 JSON만 출력한다."
 def make_prompt(word, lemma):
     return f"""{SYSTEM_PROMPT}
 단어: {word}
-기본형: {lemma,(품사)}
+기본형: {lemma}
 {{ "ko_meanings": ["뜻1", "뜻2"], "examples": [ {{"ru": "예문1", "ko": "번역1"}}, {{"ru": "예문2", "ko": "번역2"}} ] }}
 """
 
@@ -145,13 +160,14 @@ if manual_input:
     
     # ************** 정보 로드 및 저장 **************
     lemma = lemmatize_ru(manual_input)
+    pos = get_pos_ru(manual_input) # 품사 추출
     
     try:
         info = fetch_from_gemini(manual_input, lemma)
         
-        # 검색된 단어의 정보를 세션 상태에 저장하여 하단 목록에 추가
+        # 검색된 단어의 정보를 세션 상태에 저장 (품사 정보 추가)
         if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != manual_input:
-             st.session_state.word_info[lemma] = {**info, "loaded_token": manual_input} 
+             st.session_state.word_info[lemma] = {**info, "loaded_token": manual_input, "pos": pos} 
         
     except Exception as e:
         st.error(f"Gemini 오류: {e}")
@@ -168,7 +184,7 @@ left, right = st.columns([2, 1])
 
 # --- 5.1. 텍스트 하이라이팅 (left 컬럼) ---
 with left:
-    st.subheader("입력된 텍스트")
+    st.subheader("입력된 텍스트 하이라이팅")
     st.info("검색창에 단어를 입력하면 텍스트에서 해당 단어가 하이라이트됩니다.")
 
     # 텍스트 하이라이팅 표시 
@@ -205,7 +221,6 @@ with left:
     if st.session_state.reset_button:
         st.rerun()
 
-
 # --- 5.2. 단어 상세 정보 (right 컬럼) ---
 with right:
     st.subheader("단어 상세 정보")
@@ -217,8 +232,10 @@ with right:
         info = st.session_state.word_info.get(lemma, {})
 
         if info and "ko_meanings" in info:
+            pos = info.get("pos", "알 수 없음") # 품사 정보 로드
+            
             st.markdown(f"### **{current_token}**")
-            st.markdown(f"**기본형 (Lemma):** *{lemma}*")
+            st.markdown(f"**기본형 (Lemma):** *{lemma}* ({pos})") # 품사 표시
             st.divider()
 
             ko_meanings = info.get("ko_meanings", [])
@@ -263,8 +280,14 @@ if word_info:
         if lemma not in processed_lemmas and lemma in word_info:
             info = word_info[lemma]
             if info.get("ko_meanings") and info["ko_meanings"][0] != "JSON 파싱 오류":
+                pos = info.get("pos", "") # 품사 정보 로드
+                
+                # 품사 정보를 뜻 뒤에 (품사) 형태로 추가
                 short = "; ".join(info["ko_meanings"][:2])
-                rows.append({"기본형": lemma, "(품사), 대표 뜻": short})
+                if pos:
+                    short = f"{short} ({pos})"
+
+                rows.append({"기본형": lemma, "대표 뜻": short})
                 processed_lemmas.add(lemma)
 
     if rows:
@@ -281,9 +304,9 @@ if word_info:
 st.markdown("---")
 st.markdown("""
 <div class="footer">
-    이 페이지는 연세대학교 노어노문학과 25-2 러시아어 교육론 5팀의 프로젝트 결과물입니다. 
+    이 페이지는 **연세대학교 노어노문학과 25-2 러시아어 교육론 5팀의 프로젝트 결과물**입니다. 
     <br>
-    본 페이지의 내용, 기능 및 데이터를 학습 목적 이외의 용도로 무단 복제, 배포, 상업적 이용할 경우, 
-    관련 법령에 따라 민사상 손해배상 청구 및 형사상 처벌을 받을 수 있습니다.
+    본 페이지의 내용, 기능 및 데이터를 **학습 목적 이외의 용도로 무단 복제, 배포, 상업적 이용**할 경우, 
+    관련 법령에 따라 **민사상 손해배상 청구 및 형사상 처벌**을 받을 수 있습니다.
 </div>
 """, unsafe_allow_html=True)

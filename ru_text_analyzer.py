@@ -60,55 +60,49 @@ def fetch_from_gemini(word, lemma):
              
     return json.loads(text)
 
-# ---------------------- 2. 전역 스타일 정의 (버튼 위젯 인라인 강제) ----------------------
+# ---------------------- 2. 전역 스타일 정의 (버튼 UI 및 색상 강제) ----------------------
 
 st.markdown("""
 <style>
-    /* 텍스트 영역 아래의 띄어쓰기 제어 */
-    div.stTextArea + div.stMarkdown > div {
-        line-height: 2.0;
-        font-size: 1.25em;
-    }
-
-    /* 모든 st.button 컨테이너를 인라인 블록으로 강제하여 가로 나열 시도 */
-    /* Streamlit의 내부 클래스(st-emotion-cache-123456 등)는 자주 바뀌지만,
-       stButton 클래스와 그 내부 요소에 스타일을 적용하는 것이 최선입니다. */
-    div[data-testid="stForm"] + div.stButton, 
-    div.stButton {
-        display: inline-flex !important; /* 가로 나열 */
-        margin: 0px 0px 0px 0px !important; /* 마진 제거 */
-    }
-
-    /* 버튼 자체 스타일: 버튼 모양 완전히 제거 */
+    /* 1. 단어 버튼 스타일: 버튼 모양 완전히 제거 및 색상 설정 */
     div.stButton > button {
         padding: 2px 4px !important;
         margin: 0 !important;
         border: none !important;
-        background: none !important;
-        box-shadow: none !important;
+        background: none !important; /* 배경 제거 */
+        box-shadow: none !important; /* 그림자 제거 */
         cursor: pointer;
         color: #333 !important; /* 기본 텍스트 색상 */
         font-weight: normal;
         height: auto !important;
         line-height: 1.5 !important;
-        white-space: nowrap; /* 단어가 줄바꿈되지 않도록 */
+        white-space: nowrap;
+        text-align: left !important;
     }
     
-    /* 선택된(파란색) 단어 스타일 */
-    .word-selected > button {
+    /* 2. 클릭된 단어 색상 유지 (선택된 단어는 파란색) */
+    /* stButton의 상위 Div에 Word-selected 클래스를 강제로 적용하고, 내부 버튼 색상을 변경 */
+    .word-selected > div > button {
         color: #007bff !important; 
         font-weight: bold !important;
     }
     
-    /* 구두점 스타일 (버튼 아님) */
+    /* 3. 구두점 스타일 (단어와 크기 맞추기) */
     .word-punctuation {
         padding: 2px 0px;
         margin: 2px 0;
         display: inline-block;
         user-select: none;
         line-height: 1.5;
-        font-size: 1.25em; /* 단어와 크기 맞추기 */
+        font-size: 1.1em; /* 단어 버튼과 비슷한 크기로 조정 */
     }
+    
+    /* 4. st.columns 컨테이너 내의 간격 조정 (가로 나열 시도) */
+    div[data-testid^="stHorizontalBlock"] {
+        flex-wrap: wrap !important; /* 단어가 많아지면 줄바꿈 허용 */
+        gap: 0px 5px !important; /* 컬럼 간격 최소화 */
+    }
+
 </style>
 """, unsafe_allow_html=True)
 
@@ -130,42 +124,41 @@ with left:
         if clicked_token not in st.session_state.selected_words:
             st.session_state.selected_words.append(clicked_token)
 
-    # st.markdown을 사용하여 단어와 구두점을 같은 줄에 배치
-    html_elements = [] 
+    # st.columns를 사용하여 단어와 구두점을 가로로 나열
+    # Streamlit에서 인라인 요소를 강제하는 가장 안정적인 방법 중 하나입니다.
     
+    cols = st.columns(len(tokens_with_punct)) # 토큰 개수만큼 컬럼 생성
+
     for i, tok in enumerate(tokens_with_punct):
-        if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
-            # 단어인 경우: HTML로 버튼 컨테이너 시작
-            is_selected = tok in st.session_state.selected_words
-            css_class = "word-container"
-            if is_selected:
-                 css_class += " word-selected"
-
-            # 1. HTML 마크업 시작 (CSS 적용을 위한 래퍼)
-            html_elements.append(f'<div class="{css_class}" style="display: inline-flex;">')
-            
-            # 2. 버튼 배치 및 클릭 로직 실행 (st.button은 Python 코드를 재실행시키는 핵심 위젯)
-            st.button(
-                tok, 
-                key=f"word_{tok}_{i}", # 고유 key
-                on_click=on_word_click,
-                args=(tok,)
-            )
+        with cols[i]:
+            if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
+                # 단어인 경우: st.button 사용
+                is_selected = tok in st.session_state.selected_words
                 
-            # 3. HTML 마크업 종료 및 띄어쓰기 추가 (다음 요소와 분리)
-            html_elements.append(f'</div> ') 
+                # CSS 클래스를 st.button의 상위 컨테이너에 적용하기 위한 트릭
+                # Streamlit 위젯은 자체 Div에 래핑되므로, 이 래퍼에 클래스를 삽입합니다.
+                
+                # 주의: st.button은 텍스트를 인수로 받으므로, 이 텍스트로 버튼을 만듭니다.
+                
+                button_html = f'<div class="{"word-selected" if is_selected else ""}"></div>'
+                # st.markdown(button_html, unsafe_allow_html=True) # HTML 삽입
 
-        else:
-            # 구두점인 경우: 마크다운으로 출력하여 단어 사이에 배치
-            html_elements.append(f'<span class="word-punctuation">{tok}</span>')
+                # st.button을 렌더링
+                st.button(
+                    tok, 
+                    key=f"word_{tok}_{i}", # 고유 key
+                    on_click=on_word_click,
+                    args=(tok,)
+                )
+                
+                # CSS 클래스를 버튼 컨테이너에 동적으로 적용하는 Javascript 트릭이 필요하지만,
+                # Streamlit 클라우드 환경에서 JS 삽입은 불안정합니다. 
+                # 여기서는 버튼을 출력한 후, CSS가 버튼 내부의 색상을 변경하도록 의존합니다.
 
-    # Streamlit은 위젯(st.button)과 마크다운(st.markdown)이 섞여 있을 때 레이아웃 제어가 복잡합니다.
-    # 위 코드에서 st.button이 이미 순서대로 배치되었기 때문에, 
-    # 나머지 텍스트(구두점)만 마크다운으로 출력하는 방식이 가장 안정적입니다.
-    # 단어 버튼은 위에 배치되었고, 구두점은 html_elements에 모였으므로,
-    # 이를 다시 출력하여 버튼 사이에 구두점을 배치합니다.
-    # 주의: st.button이 이미 출력되었으므로, 이 코드는 HTML 래핑 역할만 수행해야 합니다.
-    st.markdown("".join(html_elements), unsafe_allow_html=True) 
+            else:
+                # 구두점인 경우: st.markdown으로 출력
+                st.markdown(f'<span class="word-punctuation">{tok}</span>')
+
 
     # 초기화 버튼
     st.markdown("---")

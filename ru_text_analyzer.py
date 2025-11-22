@@ -81,25 +81,37 @@ def fetch_from_gemini(word, lemma):
     
     except json.JSONDecodeError:
         st.error(f"Gemini 응답을 JSON으로 디코딩하는 데 실패했습니다. 원본 텍스트 시작: {text[:100]}...")
-        # 디코딩 실패 시 JSON 형식을 강제로 반환
         return {"ko_meanings": ["JSON 파싱 오류"], "examples": []}
 
 # ---------------------- 2. 전역 스타일 및 JavaScript 정의 ----------------------
 
-# JavaScript: 단어 클릭 시 클립보드에 텍스트 복사
+# JavaScript: 단어 클릭 시 검색창에 텍스트를 채우고, 이벤트(input)를 발생시켜 Streamlit의 재실행을 유도합니다.
+# 이 함수가 '자동 검색'을 구현하는 핵심이지만 불안정할 수 있습니다.
 st.markdown("""
 <script>
-    function setClickedWordAndRerun(word) {
-        // 클립보드에 단어 복사
-        navigator.clipboard.writeText(word);
-        alert(`'${word}'가 클립보드에 복사되었습니다. 위 검색창에 붙여넣으세요.`);
+    function setManualSearchWordAndRerun(word) {
+        // 1. '단어 직접 입력' 필드를 찾습니다. (ARIA-LABEL 기반)
+        const inputField = document.querySelector('[aria-label="단어 직접 입력"]');
+        if (inputField) {
+            // 2. 값을 설정합니다.
+            inputField.value = word;
+            
+            // 3. 'input' 이벤트를 강제 발생시켜 Streamlit에게 값이 변경되었음을 알립니다.
+            //    이것이 Python 세션 상태를 업데이트하고 페이지를 재실행(RERUN)하도록 유도합니다.
+            const event = new Event('input', { bubbles: true });
+            inputField.dispatchEvent(event);
+        } else {
+             // 4. Input 필드를 찾지 못하면 복사만 합니다.
+             navigator.clipboard.writeText(word);
+             alert(`죄송합니다. 자동 검색이 작동하지 않아 '${word}'를 클립보드에 복사했습니다. 검색창에 붙여넣어 주세요.`);
+        }
     }
 </script>
 """, unsafe_allow_html=True)
 
 st.markdown("""
 <style>
-    /* 1. 단어 스타일 (클릭 가능) */
+    /* (CSS 스타일은 이전과 동일하게 유지되어 파란색 글씨와 구두점 배치를 보장합니다.) */
     .word-span {
         cursor: pointer;
         padding: 0px 0px;
@@ -115,13 +127,11 @@ st.markdown("""
         text-decoration: underline;
     }
     
-    /* 2. 파란색 글씨화 (선택/검색된 단어) */
     .word-selected {
         color: #007bff !important; 
         font-weight: bold;
     }
     
-    /* 3. 구두점 스타일 */
     .word-punctuation {
         padding: 0px 0px;
         margin: 0;
@@ -131,7 +141,6 @@ st.markdown("""
         font-size: 1.25em;
     }
     
-    /* 4. 전체 텍스트 레이아웃 */
     .text-container {
         line-height: 2.0;
         margin-bottom: 20px;
@@ -144,7 +153,7 @@ st.markdown("""
 st.divider()
 st.subheader("🔍 직접 단어 검색")
 
-# 검색 입력 필드 (key를 사용하여 세션 상태에 바인딩)
+# 검색 입력 필드 (key="manual_search_word"로 세션 상태에 바인딩)
 manual_input = st.text_input("단어 직접 입력", key="manual_search_word")
 
 # 검색 입력 처리 로직
@@ -163,6 +172,11 @@ if manual_input:
 
     try:
         info = fetch_from_gemini(manual_input, lemma)
+        
+        # *** FIX for Issue 1: 검색된 단어의 정보를 세션 상태에 저장하여 하단 목록에 추가되도록 함 ***
+        if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != manual_input:
+             st.session_state.word_info[lemma] = {**info, "loaded_token": manual_input} 
+        
     except Exception as e:
         st.error(f"Gemini 오류: {e}")
         info = {}
@@ -181,13 +195,12 @@ if manual_input:
             st.markdown(f"- **{ex.get('ru','')}**")
             st.markdown(f" → {ex.get('ko','')}")
     
-    st.markdown("---") # 검색 결과 구분선
+    st.markdown("---")
 
 
 # ---------------------- 4. 메인 텍스트 및 레이아웃 ----------------------
 
 text = st.text_area("텍스트를 입력하세요", "Человек идёт по улице. Это тестовая строка. Хорошо.", height=150)
-# 단어, 구두점, 공백을 모두 토큰으로 분리
 tokens_with_punct = re.findall(r"(\w+|[^\s\w]+|\s+)", text, flags=re.UNICODE)
 
 left, right = st.columns([2, 1])
@@ -200,23 +213,22 @@ with left:
     
     for tok in tokens_with_punct:
         if re.fullmatch(r'\w+', tok, flags=re.UNICODE):
-            # 단어인 경우: HTML <span>으로 렌더링
             is_selected = tok in st.session_state.selected_words
             css = "word-span"
             
-            # **색상 유지 구현: 선택된 단어에 클래스를 직접 삽입**
+            # 파란색 글씨 유지: 선택된 단어에 클래스를 직접 삽입
             if is_selected:
                 css += " word-selected"
             
-            # onclick: JavaScript 함수 호출 (클릭 시 복사)
+            # onclick: JavaScript 함수 호출 (클릭 시 자동 검색 시도)
             html_all.append(
-                f'<span class="{css}" onclick="setClickedWordAndRerun(\'{tok}\');">'
+                f'<span class="{css}" onclick="setManualSearchWordAndRerun(\'{tok}\');">'
                 f'{tok}'
                 f'</span>'
             )
 
         else:
-            # 구두점 또는 공백인 경우: 일반 <span>으로 렌더링 (파란색화 방지)
+            # 구두점 또는 공백
             html_all.append(f'<span class="word-punctuation">{tok}</span>')
 
     html_all.append('</div>')
@@ -232,11 +244,7 @@ with left:
         st.session_state.manual_search_word = ""
         st.rerun()
 
-# --- 4.2. 단어 상세 정보 로드 (클릭/검색 시) ---
-
-# 현재는 manual_input에 의해 clicked_word가 업데이트되므로 이 로직은 유지됨.
-
-# --- 4.3. 단어 상세 정보 (right 컬럼) ---
+# --- 4.2. 단어 상세 정보 (right 컬럼) ---
 with right:
     st.subheader("단어 상세 정보")
     
@@ -265,17 +273,17 @@ with right:
                     st.markdown(f"- {ex.get('ru', '')}")
                     st.markdown(f" → {ex.get('ko', '')}")
             else:
-                if ko_meanings and ko_meanings[0].startswith(f"'{current_token}'의 API 키 없음"):
+                if ko_meanings and ko_meanings[0].startswith("JSON 파싱 오류"):
+                     st.error("Gemini API에서 예상치 못한 형식이 반환되어 정보 표시 오류가 발생했습니다.")
+                elif ko_meanings and ko_meanings[0].startswith(f"'{current_token}'의 API 키 없음"):
                      st.warning("API 키가 설정되지 않아 예문을 불러올 수 없습니다.")
-                elif ko_meanings[0] == "JSON 파싱 오류":
-                     st.error("Gemini API에서 예상치 못한 형식이 반환되었습니다.")
                 else:
                     st.info("예문 정보가 없습니다.")
         else:
             st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
             
     else:
-        st.info("왼쪽 텍스트에서 단어를 클릭하고 붙여넣거나, 위 검색창을 이용해주세요.")
+        st.info("왼쪽 텍스트에서 단어를 클릭하여 자동 검색을 시도하거나, 위 검색창을 이용해주세요.")
 
 # ---------------------- 5. 하단: 누적 목록 + CSV ----------------------
 st.divider()
@@ -288,13 +296,16 @@ if word_info:
     rows = []
     processed_lemmas = set()
     
+    # 선택된 단어 목록을 순회하며, 해당 단어의 기본형 정보가 로드되었는지 확인
     for tok in selected:
         lemma = lemmatize_ru(tok)
         if lemma not in processed_lemmas and lemma in word_info:
             info = word_info[lemma]
-            short = "; ".join(info["ko_meanings"][:2])
-            rows.append({"기본형": lemma, "대표 뜻": short})
-            processed_lemmas.add(lemma)
+            # JSON 파싱 오류 단어는 제외
+            if info.get("ko_meanings") and info["ko_meanings"][0] != "JSON 파싱 오류":
+                short = "; ".join(info["ko_meanings"][:2])
+                rows.append({"기본형": lemma, "대표 뜻": short})
+                processed_lemmas.add(lemma)
 
     if rows:
         df = pd.DataFrame(rows)
@@ -303,4 +314,4 @@ if word_info:
         csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
         st.download_button("💾 CSV로 저장", csv_bytes, "russian_words.csv", "text/csv")
     else:
-        st.info("선택된 단어의 정보를 로드 중이거나, 표시할 정보가 없습니다.")
+        st.info("선택된 단어의 정보가 로드 중이거나, 표시할 정보가 없습니다.")

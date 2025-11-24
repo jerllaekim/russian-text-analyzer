@@ -386,7 +386,7 @@ with right:
 
 # ---------------------- 6. 하단: 한국어 번역본 (재배치) ----------------------
 st.divider()
-st.subheader("🇰🇷 한국어 번역본 (하이라이트 포함)")
+st.subheader("한국어 번역본")
 
 # 텍스트가 변경되었거나 아직 번역되지 않았다면 새로 번역을 요청
 if st.session_state.translated_text == "" or st.session_state.display_text != st.session_state.last_processed_text:

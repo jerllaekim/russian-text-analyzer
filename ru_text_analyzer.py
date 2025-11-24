@@ -7,10 +7,11 @@ from pymystem3 import Mystem
 from google import genai
 from google.cloud import vision 
 import io
+import urllib.parse # URL 인코딩을 위해 추가
 
 # ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
 st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
-st.title("러시아어 텍스트 분석기")
+st.title("러시아어 텍스트 분석기") 
 
 # --- 세션 상태 초기화 ---
 if "selected_words" not in st.session_state:
@@ -204,6 +205,12 @@ st.markdown("""
         border-bottom: 3px solid #007bff; /* 파란색 밑줄 추가 */
         border-radius: 2px;
     }
+    .search-link-container {
+        display: flex;
+        gap: 10px;
+        margin-top: 15px;
+        flex-wrap: wrap;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -227,7 +234,7 @@ if uploaded_file is not None:
         st.error(ocr_result)
 
 
-st.subheader("📝 분석 대상 러시아어 텍스트")
+st.subheader("📝 분석 대상 텍스트") 
 current_text = st.text_area(
     "러시아어 텍스트를 입력하거나 위에 업로드된 텍스트를 수정하세요", 
     st.session_state.display_text, 
@@ -246,7 +253,7 @@ if current_text != st.session_state.display_text:
 
 # --- 4.2. 단어 검색창 및 로직 (원래 코드와 동일) ---
 st.divider()
-st.subheader("🔍 단어/구 검색")
+st.subheader("🔍 단어/구 검색") 
 manual_input = st.text_input("단어 또는 구를 입력하고 Enter (예: 'идёт по улице')", key="current_search_query")
 
 if manual_input and manual_input != st.session_state.get("last_processed_query"):
@@ -305,7 +312,7 @@ def get_highlighted_html(text_to_process, highlight_words):
 
 
 with left:
-    st.subheader("러시아어 텍스트 원문")
+    st.subheader("러시아어 텍스트 원문") 
     
     # 1. 러시아어 텍스트 하이라이팅 출력
     ru_html = get_highlighted_html(st.session_state.display_text, st.session_state.selected_words)
@@ -329,7 +336,7 @@ with left:
     if st.session_state.reset_button:
         st.rerun()
 
-# --- 5.2. 단어 상세 정보 (right 컬럼 - 원래 코드와 동일) ---
+# --- 5.2. 단어 상세 정보 (right 컬럼) + 검색 링크 추가 ---
 with right:
     st.subheader("단어 상세 정보")
     
@@ -377,6 +384,24 @@ with right:
                      st.error("Gemini API 정보 오류.")
                  else:
                     st.info("예문 정보가 없습니다.")
+            
+            # --- 외부 검색 링크 추가 ---
+            encoded_query = urllib.parse.quote(current_token)
+            
+            # Multitran: 영한 사전 (기본)
+            multitran_url = f"[https://www.multitran.com/m.exe?s=](https://www.multitran.com/m.exe?s=){encoded_query}&l1=1&l2=2"
+            
+            # 러시아 국립 코퍼스 (НКРЯ): 검색 페이지로 이동
+            corpus_url = f"[http://search.ruscorpora.ru/search.xml?text=](http://search.ruscorpora.ru/search.xml?text=){encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1"
+            
+            st.markdown("#### 🌐 외부 검색")
+            st.markdown(f"""
+            <div class="search-link-container">
+                <a href="{multitran_url}" target="_blank">📚 Multitran 검색</a>
+                <a href="{corpus_url}" target="_blank">📖 국립 코퍼스 검색</a>
+            </div>
+            """, unsafe_allow_html=True)
+            
         else:
             st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
             
@@ -384,31 +409,9 @@ with right:
         st.info("검색창에 단어를 입력하면 여기에 상세 정보가 표시됩니다.")
 
 
-# ---------------------- 6. 하단: 한국어 번역본 (재배치) ----------------------
+# ---------------------- 6. 하단: 누적 목록 + CSV (한국어 번역보다 위에 위치) ----------------------
 st.divider()
-st.subheader("한국어 번역본")
-
-# 텍스트가 변경되었거나 아직 번역되지 않았다면 새로 번역을 요청
-if st.session_state.translated_text == "" or st.session_state.display_text != st.session_state.last_processed_text:
-    st.session_state.translated_text = translate_text(
-        st.session_state.display_text, 
-        st.session_state.selected_words
-    )
-    st.session_state.last_processed_text = st.session_state.display_text
-
-translated_text = st.session_state.translated_text
-
-if translated_text.startswith("Gemini API 키가 설정되지"):
-    st.error(translated_text)
-elif translated_text.startswith("번역 오류 발생"):
-    st.error(translated_text)
-else:
-    st.markdown(f'<div class="text-container" style="color: #333; font-weight: 500;">{translated_text}</div>', unsafe_allow_html=True)
-
-
-# ---------------------- 7. 하단: 누적 목록 + CSV (**재배치**) ----------------------
-st.divider()
-st.subheader("📝 선택 단어 목록 (기본형 기준)")
+st.subheader("📝 선택 단어 목록 (기본형 기준)") 
 
 selected = st.session_state.selected_words
 word_info = st.session_state.word_info
@@ -445,6 +448,29 @@ if word_info:
         st.download_button("💾 CSV로 저장", csv_bytes, "russian_words.csv", "text/csv")
     else:
         st.info("선택된 단어의 정보가 로드 중이거나, 표시할 정보가 없습니다.")
+
+
+# ---------------------- 7. 하단: 한국어 번역본 (가장 아래에 위치) ----------------------
+st.divider()
+st.subheader("🇰🇷 한국어 번역본") 
+
+# 텍스트가 변경되었거나 아직 번역되지 않았다면 새로 번역을 요청
+if st.session_state.translated_text == "" or st.session_state.display_text != st.session_state.last_processed_text:
+    st.session_state.translated_text = translate_text(
+        st.session_state.display_text, 
+        st.session_state.selected_words
+    )
+    st.session_state.last_processed_text = st.session_state.display_text
+
+translated_text = st.session_state.translated_text
+
+if translated_text.startswith("Gemini API 키가 설정되지"):
+    st.error(translated_text)
+elif translated_text.startswith("번역 오류 발생"):
+    st.error(translated_text)
+else:
+    st.markdown(f'<div class="text-container" style="color: #333; font-weight: 500;">{translated_text}</div>', unsafe_allow_html=True)
+
 # ---------------------- 8. 저작권 표시 (페이지 최하단) ----------------------
 st.markdown("---")
 st.markdown("""

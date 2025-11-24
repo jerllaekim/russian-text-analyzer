@@ -394,8 +394,8 @@ with right:
                 # 러시아 국립 코퍼스 (НКРЯ): 검색 페이지로 이동
                     corpus_url = f"http://search.ruscorpora.ru/search.xml?text={encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1"
 
-                st.markdown("#### 🌐 외부 검색")
-                st.markdown(f"""
+                        st.markdown("#### 🌐 외부 검색")
+                        st.markdown(f"""
                 <div class="search-link-container">
                 <a href="{multitran_url}" target="_blank">📚 Multitran 검색</a>
                     <a href="{corpus_url}" target="_blank">📖 국립 코퍼스 검색</a>

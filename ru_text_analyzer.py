@@ -29,7 +29,7 @@ if "display_text" not in st.session_state:
 if "translated_text" not in st.session_state:
     st.session_state.translated_text = ""
 if "last_processed_text" not in st.session_state:
-    st.session_state.last_processed_text = ""
+    st.session_state.last_processed_text = "" # ❗ 오류 수정 완료: 정확한 변수명
 if "last_processed_query" not in st.session_state:
     st.session_state.last_processed_query = ""
 
@@ -68,6 +68,7 @@ def get_pos_ru(word: str) -> str:
 @st.cache_data(show_spinner="이미지에서 텍스트 추출 중")
 def detect_text_from_image(image_bytes):
     try:
+        # GCP SA 키 설정 (Streamlit Secrets 사용)
         if st.secrets.get("GCP_SA_KEY"):
             with open("temp_sa_key.json", "w") as f:
                 json.dump(st.secrets["GCP_SA_KEY"], f)
@@ -450,14 +451,24 @@ if word_info:
 
 # ---------------------- 7. 하단: 한국어 번역본 (가장 아래에 위치) ----------------------
 st.divider()
-st.subheader("한국어 번역본") 
+st.subheader("🇰🇷 한국어 번역본") 
 
 # 텍스트가 변경되었거나 아직 번역되지 않았다면 새로 번역을 요청
 if st.session_state.translated_text == "" or st.session_state.display_text != st.session_state.last_processed_text:
+    st.session_state.translated_text = translate_text(
         st.session_state.display_text, 
         st.session_state.selected_words
     )
-    st.session_state.last_processed
+    st.session_state.last_processed_text = st.session_state.display_text
+
+translated_text = st.session_state.translated_text
+
+if translated_text.startswith("Gemini API 키가 설정되지"):
+    st.error(translated_text)
+elif translated_text.startswith("번역 오류 발생"):
+    st.error(translated_text)
+else:
+    st.markdown(f'<div class="text-container" style="color: #333; font-weight: 500;">{translated_text}</div>', unsafe_allow_html=True)
 
 # ---------------------- 8. 저작권 표시 (페이지 최하단) ----------------------
 st.markdown("---")

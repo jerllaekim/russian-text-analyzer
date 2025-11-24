@@ -7,7 +7,7 @@ from pymystem3 import Mystem
 from google import genai
 from google.cloud import vision 
 import io
-import urllib.parse # URL 인코딩을 위해 추가
+import urllib.parse 
 
 # ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
 st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
@@ -36,7 +36,7 @@ if "last_processed_query" not in st.session_state:
 
 mystem = Mystem()
 
-# ---------------------- 품사 변환 딕셔너리 및 Mystem 함수 (생략) ----------------------
+# ---------------------- 품사 변환 딕셔너리 및 Mystem 함수 ----------------------
 POS_MAP = {
     'S': '명사', 'V': '동사', 'A': '형용사', 'ADV': '부사', 'PR': '전치사',
     'CONJ': '접속사', 'INTJ': '감탄사', 'PART': '불변화사', 'NUM': '수사',
@@ -64,11 +64,10 @@ def get_pos_ru(word: str) -> str:
             return POS_MAP.get(pos_abbr, '품사')
     return '품사'
 
-# ---------------------- OCR 함수 (생략) ----------------------
+# ---------------------- OCR 함수 ----------------------
 @st.cache_data(show_spinner="이미지에서 텍스트 추출 중")
 def detect_text_from_image(image_bytes):
     try:
-        # GCP SA 키 설정 (Streamlit Secrets 사용)
         if st.secrets.get("GCP_SA_KEY"):
             with open("temp_sa_key.json", "w") as f:
                 json.dump(st.secrets["GCP_SA_KEY"], f)
@@ -90,7 +89,7 @@ def detect_text_from_image(image_bytes):
         return f"OCR 처리 중 오류 발생: {e}"
 
 
-# ---------------------- 1. Gemini 연동 함수 (생략) ----------------------
+# ---------------------- 1. Gemini 연동 함수 ----------------------
 
 def get_gemini_client():
     api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
@@ -147,7 +146,7 @@ def fetch_from_gemini(word, lemma, pos):
     except json.JSONDecodeError:
         return {"ko_meanings": ["JSON 파싱 오류"], "examples": []}
 
-# ---------------------- 2. 텍스트 번역 함수 (하이라이트 마크업 요청 포함) ----------------------
+# ---------------------- 2. 텍스트 번역 함수 ----------------------
 
 @st.cache_data(show_spinner="텍스트를 한국어로 번역하는 중...")
 def translate_text(russian_text, highlight_words):
@@ -186,7 +185,7 @@ def translate_text(russian_text, highlight_words):
         return f"번역 오류 발생: {e}"
 
 
-# ---------------------- 3. 전역 스타일 정의 (생략) ----------------------
+# ---------------------- 3. 전역 스타일 정의 ----------------------
 
 st.markdown("""
 <style>
@@ -202,7 +201,7 @@ st.markdown("""
         font-weight: bold;
         background-color: #e0f0ff; 
         padding: 2px 0px;
-        border-bottom: 3px solid #007bff; /* 파란색 밑줄 추가 */
+        border-bottom: 3px solid #007bff; 
         border-radius: 2px;
     }
     .search-link-container {
@@ -251,7 +250,7 @@ if current_text != st.session_state.display_text:
      st.session_state.word_info = {}
      st.session_state.current_search_query = ""
 
-# --- 4.2. 단어 검색창 및 로직 (원래 코드와 동일) ---
+# --- 4.2. 단어 검색창 및 로직 ---
 st.divider()
 st.subheader("🔍 단어/구 검색") 
 manual_input = st.text_input("단어 또는 구를 입력하고 Enter (예: 'идёт по улице')", key="current_search_query")
@@ -385,36 +384,27 @@ with right:
                  else:
                     st.info("예문 정보가 없습니다.")
             
-                      # --- 외부 검색 링크 추가 ---
-                    encoded_query = urllib.parse.quote(current_token)
-
-                # Multitran: 영한 사전 (기본)
-                    multitran_url = f"https://www.multitran.com/m.exe?s={encoded_query}&l1=1&l2=2"
-
-                # 러시아 국립 코퍼스 (НКРЯ): 검색 페이지로 이동
-                    corpus_url = f"http://search.ruscorpora.ru/search.xml?text={encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1"
-
-                   # --- 외부 검색 링크 추가 ---
-encoded_query = urllib.parse.quote(current_token)
-
-# Multitran: 영한 사전 (기본)
-multitran_url = f"https://www.multitran.com/m.exe?s={encoded_query}&l1=1&l2=2"
-
-# 러시아 국립 코퍼스 (НКРЯ): 검색 페이지로 이동
-corpus_url = f"http://search.ruscorpora.ru/search.xml?text={encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1"
-
-st.markdown("#### 🌐 외부 검색")
-st.markdown(f"""
-<div class="search-link-container">
-    <a href="{multitran_url}" target="_blank">📚 Multitran 검색</a>
-    <a href="{corpus_url}" target="_blank">📖 국립 코퍼스 검색</a>
-</div>
-""", unsafe_allow_html=True)
-                        else:
-                            st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
+            # --- 외부 검색 링크 추가 (st.link_button 사용) ---
+            encoded_query = urllib.parse.quote(current_token)
             
-                          else:
-                                st.info("검색창에 단어를 입력하면 여기에 상세 정보가 표시됩니다.")
+            # Multitran: 영한 사전 (기본)
+            multitran_url = f"[https://www.multitran.com/m.exe?s=](https://www.multitran.com/m.exe?s=){encoded_query}&l1=1&l2=2"
+            
+            # 러시아 국립 코퍼스 (НКРЯ): 검색 페이지로 이동
+            corpus_url = f"[http://search.ruscorpora.ru/search.xml?text=](http://search.ruscorpora.ru/search.xml?text=){encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1"
+            
+            st.markdown("#### 🌐 외부 검색")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.link_button("📚 Multitran 검색", url=multitran_url)
+            with col2:
+                st.link_button("📖 국립 코퍼스 검색", url=corpus_url)
+            
+        else:
+            st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
+            
+    else:
+        st.info("검색창에 단어를 입력하면 여기에 상세 정보가 표시됩니다.")
 
 
 # ---------------------- 6. 하단: 누적 목록 + CSV (한국어 번역보다 위에 위치) ----------------------
@@ -468,16 +458,7 @@ if st.session_state.translated_text == "" or st.session_state.display_text != st
         st.session_state.display_text, 
         st.session_state.selected_words
     )
-    st.session_state.last_processed_text = st.session_state.display_text
-
-translated_text = st.session_state.translated_text
-
-if translated_text.startswith("Gemini API 키가 설정되지"):
-    st.error(translated_text)
-elif translated_text.startswith("번역 오류 발생"):
-    st.error(translated_text)
-else:
-    st.markdown(f'<div class="text-container" style="color: #333; font-weight: 500;">{translated_text}</div>', unsafe_allow_html=True)
+    st.session_state.last_processed
 
 # ---------------------- 8. 저작권 표시 (페이지 최하단) ----------------------
 st.markdown("---")

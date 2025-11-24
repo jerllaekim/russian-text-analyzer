@@ -394,14 +394,22 @@ with right:
                 # 러시아 국립 코퍼스 (НКРЯ): 검색 페이지로 이동
                     corpus_url = f"http://search.ruscorpora.ru/search.xml?text={encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1"
 
-                        st.markdown("#### 🌐 외부 검색")
-                        st.markdown(f"""
-                <div class="search-link-container">
-                <a href="{multitran_url}" target="_blank">📚 Multitran 검색</a>
-                    <a href="{corpus_url}" target="_blank">📖 국립 코퍼스 검색</a>
-                    </div>
-                    """, unsafe_allow_html=True)
-            
+                   # --- 외부 검색 링크 추가 ---
+encoded_query = urllib.parse.quote(current_token)
+
+# Multitran: 영한 사전 (기본)
+multitran_url = f"https://www.multitran.com/m.exe?s={encoded_query}&l1=1&l2=2"
+
+# 러시아 국립 코퍼스 (НКРЯ): 검색 페이지로 이동
+corpus_url = f"http://search.ruscorpora.ru/search.xml?text={encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1"
+
+st.markdown("#### 🌐 외부 검색")
+st.markdown(f"""
+<div class="search-link-container">
+    <a href="{multitran_url}" target="_blank">📚 Multitran 검색</a>
+    <a href="{corpus_url}" target="_blank">📖 국립 코퍼스 검색</a>
+</div>
+""", unsafe_allow_html=True)
                         else:
                             st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
             

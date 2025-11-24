@@ -9,6 +9,7 @@ from google.cloud import vision
 import io
 
 # ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
+# 1. 제목 간소화
 st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
 st.title("러시아어 텍스트 분석기")
 
@@ -62,10 +63,10 @@ def get_pos_ru(word: str) -> str:
     return '품사'
 
 # ---------------------- OCR 함수 (생략) ----------------------
-@st.cache_data(show_spinner="이미지에서 러시아어 텍스트를 추출하는 중...")
+@st.cache_data(show_spinner="이미지에서 텍스트 추출 중...")
 def detect_text_from_image(image_bytes):
-    # (원래 코드와 동일)
     try:
+        # GCP SA 키 설정 (Streamlit Secrets 사용)
         if st.secrets.get("GCP_SA_KEY"):
             with open("temp_sa_key.json", "w") as f:
                 json.dump(st.secrets["GCP_SA_KEY"], f)
@@ -87,23 +88,21 @@ def detect_text_from_image(image_bytes):
         return f"OCR 처리 중 오류 발생: {e}"
 
 
-# ---------------------- 1. Gemini 연동 함수 ----------------------
+# ---------------------- 1. Gemini 연동 함수 (생략) ----------------------
 
-# Gemini 클라이언트 초기화 함수
 def get_gemini_client():
     api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
     return genai.Client(api_key=api_key) if api_key else None
 
-# 단어 분석 함수 (원래 코드와 동일)
 @st.cache_data(show_spinner=False)
 def fetch_from_gemini(word, lemma, pos):
     client = get_gemini_client()
     if not client:
         return {"ko_meanings": [f"'{word}'의 API 키 없음 (GEMINI_API_KEY 설정 필요)"], "examples": []}
     
-    # ... (프롬프트 구성 및 JSON 파싱 로직은 이전과 동일) ...
     SYSTEM_PROMPT = "너는 러시아어-한국어 학습 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 최대 두 개만 제공한다. 만약 동사(V)이면, 불완료상(imp)과 완료상(perf) 형태를 함께 제공해야 한다. 반드시 JSON만 출력한다."
     
+    # ... (프롬프트 구성 및 JSON 파싱 로직은 이전과 동일) ...
     if pos == '동사':
         prompt = f"""{SYSTEM_PROMPT}
 단어: {word}
@@ -147,27 +146,48 @@ def fetch_from_gemini(word, lemma, pos):
     except json.JSONDecodeError:
         return {"ko_meanings": ["JSON 파싱 오류"], "examples": []}
 
-# ---------------------- 2. 텍스트 번역 함수 (새로 추가) ----------------------
+# ---------------------- 2. 텍스트 번역 함수 (**수정됨: 하이라이트 마크업 요청 추가**) ----------------------
 
 @st.cache_data(show_spinner="텍스트를 한국어로 번역하는 중...")
-def translate_text(russian_text):
+def translate_text(russian_text, highlight_words):
     client = get_gemini_client()
     if not client:
         return "Gemini API 키가 설정되지 않아 번역을 수행할 수 없습니다."
         
-    translation_prompt = f"다음 러시아어 텍스트를 문맥에 맞는 자연스러운 한국어로 번역해줘. 원본 텍스트: '{russian_text}'"
-    
+    # 하이라이트할 러시아어 단어 목록 (쉼표로 구분)
+    phrases_to_highlight = ", ".join([f"'{w}'" for w in highlight_words])
+
+    # ❗ 프롬프트 수정: 번역 시 특정 단어의 번역본을 마크업해달라고 요청
+    if phrases_to_highlight:
+        translation_prompt = f"""
+        다음 러시아어 텍스트를 문맥에 맞는 자연스러운 한국어로 번역해줘.
+        **반드시 아래 러시아어 단어/구의 한국어 번역이 등장하면, 그 한국어 번역 단어/구를 `<PHRASE_START>`와 `<PHRASE_END>` 마크업으로 감싸야 해.**
+
+        러시아어 텍스트: '{russian_text}'
+        마크업 대상 러시아어 단어/구: {phrases_to_highlight}
+        """
+    else:
+        translation_prompt = f"다음 러시아어 텍스트를 문맥에 맞는 자연스러운 한국어로 번역해줘. 원본 텍스트: '{russian_text}'"
+
     try:
         res = client.models.generate_content(
             model="gemini-2.0-flash", 
             contents=translation_prompt
         )
-        return res.text.strip()
+        translated = res.text.strip()
+        
+        # 후처리: 마크업을 HTML Span 태그로 변환
+        selected_class = "word-selected"
+        translated = translated.replace("<PHRASE_START>", f'<span class="{selected_class}">')
+        translated = translated.replace("<PHRASE_END>", '</span>')
+
+        return translated
+
     except Exception as e:
         return f"번역 오류 발생: {e}"
 
 
-# ---------------------- 3. 전역 스타일 정의 ----------------------
+# ---------------------- 3. 전역 스타일 정의 (생략) ----------------------
 
 st.markdown("""
 <style>
@@ -193,7 +213,7 @@ st.markdown("""
 # ---------------------- 4. UI 배치 및 메인 로직 ----------------------
 
 # --- 4.1. OCR 및 텍스트 입력 섹션 ---
-st.subheader("🖼️ 이미지에서 텍스트 추출 (OCR)")
+st.subheader("🖼️ 이미지에서 텍스트 추출")
 uploaded_file = st.file_uploader("JPG, PNG 등 이미지를 업로드하세요", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -202,8 +222,8 @@ if uploaded_file is not None:
     
     if ocr_result and not ocr_result.startswith(("OCR API 키", "Vision API 오류")):
         st.session_state.ocr_output_text = ocr_result
-        st.session_state.display_text = ocr_result # 분석 대상 텍스트 업데이트
-        st.session_state.translated_text = "" # 텍스트 변경 시 번역 초기화
+        st.session_state.display_text = ocr_result
+        st.session_state.translated_text = ""
         st.success("이미지에서 텍스트 추출 완료!")
     else:
         st.error(ocr_result)
@@ -228,11 +248,10 @@ if current_text != st.session_state.display_text:
 
 # --- 4.2. 단어 검색창 및 로직 (원래 코드와 동일) ---
 st.divider()
-st.subheader("🔍 직접 단어 검색")
-manual_input = st.text_input("단어 입력 후 Enter (구 검색 시 공백 포함 입력)", key="current_search_query")
+st.subheader("🔍 단어/구 검색")
+manual_input = st.text_input("단어 또는 구를 입력하고 Enter (예: 'идёт по улице')", key="current_search_query")
 
 if manual_input and manual_input != st.session_state.get("last_processed_query"):
-    # (검색 로직은 이전과 동일)
     if manual_input not in st.session_state.selected_words:
         st.session_state.selected_words.append(manual_input)
     
@@ -257,13 +276,11 @@ st.markdown("---")
 
 left, right = st.columns([2, 1])
 
-# --- 5.1. 하이라이팅 로직을 함수로 분리 ---
+# --- 5.1. 하이라이팅 로직 (러시아어 원문) ---
 def get_highlighted_html(text_to_process, highlight_words):
-    """주어진 텍스트에서 특정 단어/구를 하이라이트 마크업하여 HTML 문자열을 반환합니다."""
     selected_class = "word-selected"
     display_html = text_to_process
     
-    # 긴 구를 먼저 처리
     highlight_candidates = sorted(
         [word for word in highlight_words if word.strip()],
         key=len,
@@ -274,14 +291,12 @@ def get_highlighted_html(text_to_process, highlight_words):
         escaped_phrase = re.escape(phrase)
         
         if ' ' in phrase:
-            # 구 단위 대체
             display_html = re.sub(
                 f'({escaped_phrase})', 
                 f'<span class="{selected_class}">\\1</span>', 
                 display_html
             )
         else:
-            # 단어 단위 대체 (\b는 띄어쓰기 또는 구두점 경계를 나타냄)
             pattern = re.compile(r'\b' + escaped_phrase + r'\b')
             display_html = pattern.sub(
                 f'<span class="{selected_class}">{phrase}</span>', 
@@ -292,19 +307,23 @@ def get_highlighted_html(text_to_process, highlight_words):
 
 
 with left:
-    st.subheader("입력된 러시아어 텍스트 하이라이팅")
+    st.subheader("러시아어 텍스트 원문")
     
     # 1. 러시아어 텍스트 하이라이팅 출력
     ru_html = get_highlighted_html(st.session_state.display_text, st.session_state.selected_words)
     st.markdown(ru_html, unsafe_allow_html=True)
     
-    # 2. 번역본 표시 및 하이라이팅 (**추가된 기능**)
+    # 2. 번역본 표시 및 하이라이팅 (수정된 로직 적용)
     st.markdown("---")
-    st.subheader("🇰🇷 한국어 번역본 (하이라이트 포함)")
+    st.subheader("한국어 번역본")
 
     # 텍스트가 변경되었거나 아직 번역되지 않았다면 새로 번역을 요청
     if st.session_state.translated_text == "" or st.session_state.display_text != st.session_state.last_processed_text:
-        st.session_state.translated_text = translate_text(st.session_state.display_text)
+        # ❗ 새로운 번역 로직: 하이라이트할 단어 목록을 함께 전달
+        st.session_state.translated_text = translate_text(
+            st.session_state.display_text, 
+            st.session_state.selected_words
+        )
         st.session_state.last_processed_text = st.session_state.display_text
 
     translated_text = st.session_state.translated_text
@@ -314,10 +333,7 @@ with left:
     elif translated_text.startswith("번역 오류 발생"):
         st.error(translated_text)
     else:
-        # 한국어 번역본 하이라이팅 (러시아어 단어를 번역 결과에 직접 하이라이트하는 것은 불가능하므로, 
-        # 현재는 번역 결과 텍스트만 표시합니다. *주석 참고*)
-        # *참고: 한국어 번역본에 러시아어 단어와 1:1로 매칭되는 구에 하이라이트를 적용하는 것은 매우 복잡한 자연어 처리 과정을 필요로 하므로, 
-        # 현재 코드 구조에서는 전체 번역본만 표시합니다.*
+        # 번역본은 이미 translate_text 함수 내에서 HTML 마크업이 완료됨
         st.markdown(f'<div class="text-container" style="color: #333; font-weight: 500;">{translated_text}</div>', unsafe_allow_html=True)
 
 
@@ -341,7 +357,6 @@ with left:
 
 # --- 5.2. 단어 상세 정보 (right 컬럼 - 원래 코드와 동일) ---
 with right:
-    # (단어 상세 정보 출력 로직은 이전과 동일하므로 생략)
     st.subheader("단어 상세 정보")
     
     current_token = st.session_state.clicked_word
@@ -395,10 +410,10 @@ with right:
         st.info("검색창에 단어를 입력하면 여기에 상세 정보가 표시됩니다.")
 
 
-# ---------------------- 6. 하단: 누적 목록 + CSV (생략) ----------------------
-# (이 부분은 이전 코드와 동일하므로 생략합니다.)
+# ---------------------- 6. 하단: 누적 목록 + CSV (**배치 변경**) ----------------------
+# 이 섹션을 페이지의 가장 아래로 이동했습니다.
 st.divider()
-st.subheader("📝 선택한 단어 모음 (기본형 기준)")
+st.subheader("📝 선택 단어 목록 (기본형 기준)")
 
 selected = st.session_state.selected_words
 word_info = st.session_state.word_info

@@ -9,7 +9,6 @@ from google.cloud import vision
 import io
 
 # ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
-# 1. 제목 간소화
 st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
 st.title("러시아어 텍스트 분석기")
 
@@ -30,6 +29,8 @@ if "translated_text" not in st.session_state:
     st.session_state.translated_text = ""
 if "last_processed_text" not in st.session_state:
     st.session_state.last_processed_text = ""
+if "last_processed_query" not in st.session_state:
+    st.session_state.last_processed_query = ""
 
 
 mystem = Mystem()
@@ -63,7 +64,7 @@ def get_pos_ru(word: str) -> str:
     return '품사'
 
 # ---------------------- OCR 함수 (생략) ----------------------
-@st.cache_data(show_spinner="이미지에서 텍스트 추출 중...")
+@st.cache_data(show_spinner="이미지에서 텍스트 추출 중")
 def detect_text_from_image(image_bytes):
     try:
         # GCP SA 키 설정 (Streamlit Secrets 사용)
@@ -102,7 +103,6 @@ def fetch_from_gemini(word, lemma, pos):
     
     SYSTEM_PROMPT = "너는 러시아어-한국어 학습 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 최대 두 개만 제공한다. 만약 동사(V)이면, 불완료상(imp)과 완료상(perf) 형태를 함께 제공해야 한다. 반드시 JSON만 출력한다."
     
-    # ... (프롬프트 구성 및 JSON 파싱 로직은 이전과 동일) ...
     if pos == '동사':
         prompt = f"""{SYSTEM_PROMPT}
 단어: {word}
@@ -146,7 +146,7 @@ def fetch_from_gemini(word, lemma, pos):
     except json.JSONDecodeError:
         return {"ko_meanings": ["JSON 파싱 오류"], "examples": []}
 
-# ---------------------- 2. 텍스트 번역 함수 (**수정됨: 하이라이트 마크업 요청 추가**) ----------------------
+# ---------------------- 2. 텍스트 번역 함수 (하이라이트 마크업 요청 포함) ----------------------
 
 @st.cache_data(show_spinner="텍스트를 한국어로 번역하는 중...")
 def translate_text(russian_text, highlight_words):
@@ -154,10 +154,8 @@ def translate_text(russian_text, highlight_words):
     if not client:
         return "Gemini API 키가 설정되지 않아 번역을 수행할 수 없습니다."
         
-    # 하이라이트할 러시아어 단어 목록 (쉼표로 구분)
     phrases_to_highlight = ", ".join([f"'{w}'" for w in highlight_words])
 
-    # ❗ 프롬프트 수정: 번역 시 특정 단어의 번역본을 마크업해달라고 요청
     if phrases_to_highlight:
         translation_prompt = f"""
         다음 러시아어 텍스트를 문맥에 맞는 자연스러운 한국어로 번역해줘.
@@ -313,30 +311,6 @@ with left:
     ru_html = get_highlighted_html(st.session_state.display_text, st.session_state.selected_words)
     st.markdown(ru_html, unsafe_allow_html=True)
     
-    # 2. 번역본 표시 및 하이라이팅 (수정된 로직 적용)
-    st.markdown("---")
-    st.subheader("한국어 번역본")
-
-    # 텍스트가 변경되었거나 아직 번역되지 않았다면 새로 번역을 요청
-    if st.session_state.translated_text == "" or st.session_state.display_text != st.session_state.last_processed_text:
-        # ❗ 새로운 번역 로직: 하이라이트할 단어 목록을 함께 전달
-        st.session_state.translated_text = translate_text(
-            st.session_state.display_text, 
-            st.session_state.selected_words
-        )
-        st.session_state.last_processed_text = st.session_state.display_text
-
-    translated_text = st.session_state.translated_text
-    
-    if translated_text.startswith("Gemini API 키가 설정되지"):
-        st.error(translated_text)
-    elif translated_text.startswith("번역 오류 발생"):
-        st.error(translated_text)
-    else:
-        # 번역본은 이미 translate_text 함수 내에서 HTML 마크업이 완료됨
-        st.markdown(f'<div class="text-container" style="color: #333; font-weight: 500;">{translated_text}</div>', unsafe_allow_html=True)
-
-
     # 초기화 버튼
     def reset_all_state():
         st.session_state.selected_words = []
@@ -410,8 +384,29 @@ with right:
         st.info("검색창에 단어를 입력하면 여기에 상세 정보가 표시됩니다.")
 
 
-# ---------------------- 6. 하단: 누적 목록 + CSV (**배치 변경**) ----------------------
-# 이 섹션을 페이지의 가장 아래로 이동했습니다.
+# ---------------------- 6. 하단: 한국어 번역본 (재배치) ----------------------
+st.divider()
+st.subheader("🇰🇷 한국어 번역본 (하이라이트 포함)")
+
+# 텍스트가 변경되었거나 아직 번역되지 않았다면 새로 번역을 요청
+if st.session_state.translated_text == "" or st.session_state.display_text != st.session_state.last_processed_text:
+    st.session_state.translated_text = translate_text(
+        st.session_state.display_text, 
+        st.session_state.selected_words
+    )
+    st.session_state.last_processed_text = st.session_state.display_text
+
+translated_text = st.session_state.translated_text
+
+if translated_text.startswith("Gemini API 키가 설정되지"):
+    st.error(translated_text)
+elif translated_text.startswith("번역 오류 발생"):
+    st.error(translated_text)
+else:
+    st.markdown(f'<div class="text-container" style="color: #333; font-weight: 500;">{translated_text}</div>', unsafe_allow_html=True)
+
+
+# ---------------------- 7. 하단: 누적 목록 + CSV (**재배치**) ----------------------
 st.divider()
 st.subheader("📝 선택 단어 목록 (기본형 기준)")
 

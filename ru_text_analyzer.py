@@ -445,7 +445,7 @@ if word_info:
         st.download_button("💾 CSV로 저장", csv_bytes, "russian_words.csv", "text/csv")
     else:
         st.info("선택된 단어의 정보가 로드 중이거나, 표시할 정보가 없습니다.")
-# ---------------------- 7. 저작권 표시 (페이지 최하단) ----------------------
+# ---------------------- 8. 저작권 표시 (페이지 최하단) ----------------------
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; font-size: 0.75em; color: #888;">

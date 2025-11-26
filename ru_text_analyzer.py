@@ -102,7 +102,8 @@ def fetch_from_gemini(word, lemma, pos):
     if not client:
         return {"ko_meanings": [f"'{word}'의 API 키 없음 (GEMINI_API_KEY 설정 필요)"], "examples": []}
     
-    SYSTEM_PROMPT = "너는 러시아어-한국어 학습 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 최대 두 개만 제공한다. 만약 동사(V)이면, 불완료상(imp)과 완료상(perf) 형태를 함께 제공해야 한다. 반드시 JSON만 출력한다."
+    # 🌟 수정된 SYSTEM_PROMPT: 격 정보 등 불필요한 부가 정보 제거 명시
+    SYSTEM_PROMPT = "너는 러시아어-한국어 학습 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 최대 두 개만 제공한다. 한국어 뜻을 제공할 때 격 정보, 문법 정보 등 불필요한 부가 정보는 절대 포함하지 않는다. 만약 동사(V)이면, 불완료상(imp)과 완료상(perf) 형태를 함께 제공해야 한다. 반드시 JSON만 출력한다."
     
     if pos == '동사':
         prompt = f"""{SYSTEM_PROMPT}
@@ -121,7 +122,7 @@ def fetch_from_gemini(word, lemma, pos):
     text = res.text.strip()
     
     try:
-        # JSON 파싱 로직
+        # JSON 파싱 로직 (기존 코드와 동일)
         if text.startswith("```"):
             text = text.strip("`")
             lines = text.splitlines()

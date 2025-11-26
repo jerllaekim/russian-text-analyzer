@@ -35,7 +35,7 @@ if "current_search_query" not in st.session_state:
 if "ocr_output_text" not in st.session_state:
     st.session_state.ocr_output_text = ""
 if "display_text" not in st.session_state:
-    # 초기 텍스트는 테스트 문자열로 유지
+    # 'display_text'는 st.text_area의 초기값으로 사용됩니다.
     st.session_state.display_text = "Человек идёт по улице. Это тестовая строка. Хорошо. Я часто читаю эту книгу."
 if "translated_text" not in st.session_state:
     st.session_state.translated_text = ""
@@ -43,6 +43,9 @@ if "last_processed_text" not in st.session_state:
     st.session_state.last_processed_text = "" 
 if "last_processed_query" not in st.session_state:
     st.session_state.last_processed_query = ""
+# st.text_area의 key인 'input_text_area'가 세션 상태에 저장되므로, 이 값도 초기화될 수 있도록 준비합니다.
+if "input_text_area" not in st.session_state:
+    st.session_state.input_text_area = st.session_state.display_text
 
 
 mystem = Mystem()
@@ -227,13 +230,17 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# 🌟 4. 버튼 클릭 시 텍스트를 로드하는 콜백 함수 정의
+# 🌟 4. 버튼 클릭 시 텍스트를 로드하는 콜백 함수 정의 (st.text_area의 key도 업데이트)
 def load_default_text():
     """
-    NEW_DEFAULT_TEXT를 st.session_state.display_text에 반영하고 
+    NEW_DEFAULT_TEXT를 st.session_state.display_text와 st.text_area의 상태에 모두 반영하고 
     분석 상태를 초기화합니다.
     """
-    st.session_state.display_text = NEW_DEFAULT_TEXT
+    # st.text_area의 key인 'input_text_area'의 상태를 직접 업데이트합니다.
+    st.session_state.input_text_area = NEW_DEFAULT_TEXT 
+    # display_text도 함께 업데이트하여 다른 UI 요소에 반영합니다.
+    st.session_state.display_text = NEW_DEFAULT_TEXT 
+    
     st.session_state.translated_text = ""
     st.session_state.selected_words = []
     st.session_state.clicked_word = None
@@ -255,6 +262,8 @@ if uploaded_file is not None:
     if ocr_result and not ocr_result.startswith(("OCR API 키", "Vision API 오류")):
         st.session_state.ocr_output_text = ocr_result
         st.session_state.display_text = ocr_result
+        # st.text_area의 상태도 OCR 결과로 업데이트
+        st.session_state.input_text_area = ocr_result
         st.session_state.translated_text = ""
         st.success("이미지에서 텍스트 추출 완료!")
     else:
@@ -268,11 +277,11 @@ st.button(
 )
 
 st.subheader("📝 분석 대상 텍스트") 
-# current_text는 st.session_state.display_text의 현재 값을 표시하고,
-# 사용자 입력 시 st.session_state.display_text를 업데이트합니다.
+# current_text는 st.session_state.input_text_area의 현재 값을 표시합니다.
 current_text = st.text_area(
     "러시아어 텍스트를 입력하거나 위에 업로드된 텍스트를 수정하세요", 
-    st.session_state.display_text, 
+    # value를 key의 세션 상태로 명시적으로 지정
+    value=st.session_state.display_text, 
     height=150, 
     key="input_text_area"
 )
@@ -280,6 +289,7 @@ current_text = st.text_area(
 
 # 텍스트가 수정되면 상태 업데이트 및 번역/분석 상태 초기화
 if current_text != st.session_state.display_text:
+    # st.text_area의 변경 사항이 'display_text'와 동기화되도록 합니다.
     st.session_state.display_text = current_text
     st.session_state.translated_text = ""
     st.session_state.selected_words = []
@@ -360,7 +370,9 @@ with left:
         st.session_state.clicked_word = None
         st.session_state.word_info = {}
         st.session_state.current_search_query = ""
+        # 텍스트 영역의 상태도 초기화
         st.session_state.display_text = "Человек идёт по улице. Это тестовая строка. Хорошо."
+        st.session_state.input_text_area = st.session_state.display_text
         st.session_state.ocr_output_text = ""
         st.session_state.translated_text = ""
         st.session_state.last_processed_text = ""
@@ -369,7 +381,7 @@ with left:
     st.markdown("---")
     st.button("🔄 선택 및 검색 초기화", key="reset_button", on_click=reset_all_state)
     
-    # if st.session_state.get("reset_button"): # 버튼이 눌렸다면, 재실행을 유도합니다.
+    # if st.session_state.get("reset_button"):
     #     st.rerun()
 
 # --- 5.2. 단어 상세 정보 (right 컬럼) + 검색 링크 추가 ---

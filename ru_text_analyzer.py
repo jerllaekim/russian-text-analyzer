@@ -171,22 +171,26 @@ def translate_text(russian_text, highlight_words):
         return "Gemini API 키가 설정되지 않아 번역을 수행할 수 없습니다."
         
     phrases_to_highlight = ", ".join([f"'{w}'" for w in highlight_words])
+    
+    # 🌟 수정된 시스템 지침: 오직 번역 결과만 출력하도록 강제
+    SYSTEM_INSTRUCTION = "너는 번역가이다. 요청된 러시아어 텍스트를 문맥에 맞는 자연스러운 한국어로 번역하고, 절대로 다른 설명, 옵션, 질문, 부가적인 텍스트를 출력하지 않는다. 오직 최종 번역 텍스트만 출력한다."
 
     if phrases_to_highlight:
         translation_prompt = f"""
-        다음 러시아어 텍스트를 문맥에 맞는 자연스러운 한국어로 번역해줘.
         **반드시 아래 러시아어 단어/구의 한국어 번역이 등장하면, 그 한국어 번역 단어/구를 `<PHRASE_START>`와 `<PHRASE_END>` 마크업으로 감싸야 해.**
 
         러시아어 텍스트: '{russian_text}'
         마크업 대상 러시아어 단어/구: {phrases_to_highlight}
         """
     else:
-        translation_prompt = f"다음 러시아어 텍스트를 문맥에 맞는 자연스러운 한국어로 번역해줘. 원본 텍스트: '{russian_text}'"
+        translation_prompt = f"원본 러시아어 텍스트: '{russian_text}'"
 
     try:
         res = client.models.generate_content(
             model="gemini-2.0-flash", 
-            contents=translation_prompt
+            contents=translation_prompt,
+            # 🌟 시스템 지침 추가
+            config={"system_instruction": SYSTEM_INSTRUCTION}
         )
         translated = res.text.strip()
         
@@ -199,7 +203,6 @@ def translate_text(russian_text, highlight_words):
 
     except Exception as e:
         return f"번역 오류 발생: {e}"
-
 
 # ---------------------- 3. 전역 스타일 정의 ----------------------
 

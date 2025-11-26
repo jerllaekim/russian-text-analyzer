@@ -10,6 +10,16 @@ import io
 import urllib.parse 
 
 # ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
+
+# 🌟 1. 교재 연습용 텍스트 데이터 정의 (상수로만 유지)
+NEW_DEFAULT_TEXT = """МОЙ РАБОЧИЙ ДЕНЬ
+(Рассказ японского банкира)
+Разрешите представитьcя. Меня зовут Такеши Осада. Я работаю в банке «Сакура». Я живу недалеко от Токио, поэтому в рабочие дни я встаю в 5 часов утра, умываюсь, одеваюсь, завтракаю и иду на станцию. На станции я покупаю свежую газету. Я еду на работу на электричке. В электричке я обычно читаю или сплю. Дорога от дома до работы занимает 2 часа.
+Банк начинает работать в 8 утра, а заканчивает в 8 вечера, то есть мой рабочий день продолжается 12 часов, включая 2 перерыва. Рабочий день для женщин, конечно, меньше.
+В 8:30 보통 начинается собрание, где мы обсуждаем экономическую ситуацию, курс доллара, последние экономические новости, планируем работу на день. Потом я читаю документы, решаю важные вопросы, встречаюсь с клиентами, открываю им счёт в банке, даю им кредит, разговариваю по телефону и так далее.
+После работы я возвращаюсь домой. Так как я очень устаю, дома я сразу ложусь спать."""
+
+
 st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
 st.title("러시아어 텍스트 분석기") 
 
@@ -25,11 +35,12 @@ if "current_search_query" not in st.session_state:
 if "ocr_output_text" not in st.session_state:
     st.session_state.ocr_output_text = ""
 if "display_text" not in st.session_state:
+    # 2. 초기 텍스트는 원래 테스트 문자열로 유지
     st.session_state.display_text = "Человек идёт по улице. Это тестовая строка. Хорошо. Я часто читаю эту книгу."
 if "translated_text" not in st.session_state:
     st.session_state.translated_text = ""
 if "last_processed_text" not in st.session_state:
-    st.session_state.last_processed_text = "" # ❗ 오류 수정 완료: 정확한 변수명
+    st.session_state.last_processed_text = "" 
 if "last_processed_query" not in st.session_state:
     st.session_state.last_processed_query = ""
 
@@ -102,7 +113,7 @@ def fetch_from_gemini(word, lemma, pos):
     if not client:
         return {"ko_meanings": [f"'{word}'의 API 키 없음 (GEMINI_API_KEY 설정 필요)"], "examples": []}
     
-    # 🌟 수정된 SYSTEM_PROMPT: 격 정보 등 불필요한 부가 정보 제거 명시
+    # 격 정보 등 불필요한 부가 정보 제거를 명시한 SYSTEM_PROMPT
     SYSTEM_PROMPT = "너는 러시아어-한국어 학습 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 최대 두 개만 제공한다. 한국어 뜻을 제공할 때 격 정보, 문법 정보 등 불필요한 부가 정보는 절대 포함하지 않는다. 만약 동사(V)이면, 불완료상(imp)과 완료상(perf) 형태를 함께 제공해야 한다. 반드시 JSON만 출력한다."
     
     if pos == '동사':
@@ -122,7 +133,7 @@ def fetch_from_gemini(word, lemma, pos):
     text = res.text.strip()
     
     try:
-        # JSON 파싱 로직 (기존 코드와 동일)
+        # JSON 파싱 로직
         if text.startswith("```"):
             text = text.strip("`")
             lines = text.splitlines()
@@ -216,6 +227,21 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
+# 🌟 4. 버튼 클릭 시 텍스트를 로드하는 콜백 함수 정의
+def load_default_text():
+    """
+    NEW_DEFAULT_TEXT를 st.session_state.display_text에 반영하고 
+    분석 상태를 초기화합니다.
+    """
+    st.session_state.display_text = NEW_DEFAULT_TEXT
+    st.session_state.translated_text = ""
+    st.session_state.selected_words = []
+    st.session_state.clicked_word = None
+    st.session_state.word_info = {}
+    st.session_state.current_search_query = ""
+    st.session_state.last_processed_query = ""
+
+
 # ---------------------- 4. UI 배치 및 메인 로직 ----------------------
 
 # --- 4.1. OCR 및 텍스트 입력 섹션 ---
@@ -234,6 +260,12 @@ if uploaded_file is not None:
     else:
         st.error(ocr_result)
 
+# 🌟 5. 텍스트 반영 버튼 추가
+st.button(
+    "📚 중급러시아어연습 텍스트 반영하기", 
+    on_click=load_default_text, 
+    help="교재 연습용 텍스트를 입력창에 반영합니다."
+)
 
 st.subheader("📝 분석 대상 텍스트") 
 current_text = st.text_area(
@@ -243,14 +275,15 @@ current_text = st.text_area(
     key="input_text_area"
 )
 
+
 # 텍스트가 수정되면 상태 업데이트 및 번역/분석 상태 초기화
 if current_text != st.session_state.display_text:
-     st.session_state.display_text = current_text
-     st.session_state.translated_text = ""
-     st.session_state.selected_words = []
-     st.session_state.clicked_word = None
-     st.session_state.word_info = {}
-     st.session_state.current_search_query = ""
+    st.session_state.display_text = current_text
+    st.session_state.translated_text = ""
+    st.session_state.selected_words = []
+    st.session_state.clicked_word = None
+    st.session_state.word_info = {}
+    st.session_state.current_search_query = ""
 
 # --- 4.2. 단어 검색창 및 로직 ---
 st.divider()
@@ -272,7 +305,7 @@ if manual_input and manual_input != st.session_state.get("last_processed_query")
                 st.session_state.word_info[lemma] = {**info, "loaded_token": manual_input, "pos": pos}  
         except Exception as e:
             st.error(f"Gemini 오류: {e}")
-        
+            
     st.session_state.last_processed_query = manual_input 
 
 st.markdown("---") 
@@ -379,11 +412,11 @@ with right:
                     st.markdown(f"- {ex.get('ru', '')}")
                     st.markdown(f" → {ex.get('ko', '')}")
             else:
-                 if ko_meanings and ko_meanings[0].startswith(f"'{current_token}'의 API 키 없음"):
+                if ko_meanings and ko_meanings[0].startswith(f"'{current_token}'의 API 키 없음"):
                     st.warning("API 키가 설정되지 않아 예문을 불러올 수 없습니다.")
-                 elif ko_meanings and ko_meanings[0] == "JSON 파싱 오류":
-                     st.error("Gemini API 정보 오류.")
-                 else:
+                elif ko_meanings and ko_meanings[0] == "JSON 파싱 오류":
+                    st.error("Gemini API 정보 오류.")
+                else:
                     st.info("예문 정보가 없습니다.")
             
             # --- 외부 검색 링크 추가 (st.link_button 사용) ---
@@ -409,7 +442,7 @@ with right:
         st.info("검색창에 단어를 입력하면 여기에 상세 정보가 표시됩니다.")
 
 
-# ---------------------- 6. 하단: 누적 목록 + CSV (한국어 번역보다 위에 위치) ----------------------
+# ---------------------- 6. 하단: 누적 목록 + CSV ----------------------
 st.divider()
 st.subheader("📝 선택 단어 목록 (기본형 기준)") 
 
@@ -444,8 +477,9 @@ if word_info:
         df = pd.DataFrame(rows)
         st.dataframe(df, hide_index=True)
 
-        csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
-        st.download_button("💾 CSV로 저장", csv_bytes, "russian_words.csv", "text/csv")
+        # 🌟 다운로드 버튼 삭제됨
+        # csv_bytes = df.to_csv(index=False).encode("utf-8-sig")
+        # st.download_button("💾 CSV로 저장", csv_bytes, "russian_words.csv", "text/csv") 
     else:
         st.info("선택된 단어의 정보가 로드 중이거나, 표시할 정보가 없습니다.")
 

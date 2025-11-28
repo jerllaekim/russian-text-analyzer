@@ -8,11 +8,9 @@ from google import genai
 from google.cloud import vision 
 import io
 import urllib.parse 
-# ruaccent 관련 import 제거
 
 # ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
 
-# 🌟 1. 교재 연습용 텍스트 데이터 정의
 NEW_DEFAULT_TEXT = """МОЙ РАБОЧИЙ ДЕНЬ
 (Рассказ японского банкира)
 Разрешите представитьcя. Меня зовут Такеши Осада. Я работаю в банке «Сакура». Я живу недалеко от Токио, поэтому в рабочие дни я встаю в 5 часов утра, умываюсь, одеваюсь, завтракаю и иду на станцию. На станции я покупаю свежую газету. Я еду на работу на электричке. В электричке я обычно читаю или сплю. Дорога от дома до работы занимает 2 часа.
@@ -37,7 +35,6 @@ if "current_search_query" not in st.session_state:
     st.session_state.current_search_query = ""
 if "ocr_output_text" not in st.session_state:
     st.session_state.ocr_output_text = ""
-# 🌟 input_text_area를 메인 텍스트 상태로 사용 (경고 방지)
 if "input_text_area" not in st.session_state:
     st.session_state.input_text_area = DEFAULT_TEST_TEXT
 if "translated_text" not in st.session_state:
@@ -362,19 +359,15 @@ left, right = st.columns([2, 1])
 with left:
     st.subheader("러시아어 텍스트 원문")
     
-    # 🌟 외부 사이트 연결 버튼 (JS를 이용한 강제 새 창 열기 및 버튼 스타일 인라인)
+    # 🌟 외부 사이트 연결 버튼 (st.link_button을 사용하여 새 탭 열기)
     ACCENT_ONLINE_URL = "[https://russiangram.com/](https://russiangram.com/)"
     
-    st.markdown(
-        f"""
-        <button onclick="window.open('{ACCENT_ONLINE_URL}', '_blank')" 
-                style="background-color: #f0f2f6; color: #333; border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.25rem 0.75rem; font-size: 1rem; cursor: pointer; display: block; margin-bottom: 10px;">
-            🔊 강세 표시 사이트로 이동 (russiangram.com)
-        </button>
-        """, 
-        unsafe_allow_html=True
+    st.link_button(
+        "🔊 강세 표시 사이트로 이동 (russiangram.com)", 
+        url=ACCENT_ONLINE_URL, 
+        help="새 탭으로 russiangram.com이 열립니다. 텍스트를 복사하여 붙여넣어 강세를 확인하세요."
     )
-    st.info("⬆️ 새 창(탭)으로 russiangram.com이 열립니다. 텍스트를 복사하여 붙여넣어 강세를 확인하세요. **만약 창이 열리지 않으면 브라우저의 팝업 차단을 해제해주세요.**")
+    st.info("⬆️ 새 탭으로 russiangram.com이 열립니다. 텍스트를 복사하여 붙여넣어 강세를 확인하세요. **만약 탭이 열리지 않으면 브라우저의 팝업 차단을 해제해주세요.**")
     
     # 러시아어 텍스트 하이라이팅 출력 (current_text 사용)
     ru_html = get_highlighted_html(current_text, st.session_state.selected_words)

@@ -515,4 +515,3 @@ st.markdown("""
     관련 법령에 따라 민사상 손해배상 청구 및 형사상 처벌을 받을 수 있습니다.
 </div>
 """, unsafe_allow_html=True)
-````http://googleusercontent.com/image_generation_content/0

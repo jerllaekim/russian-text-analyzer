@@ -8,6 +8,13 @@ from google import genai
 from google.cloud import vision 
 import io
 import urllib.parse 
+# 🌟 ruaccent 라이브러리 추가
+try:
+    from ruaccent import Accentor
+except ImportError:
+    st.error("🚨 ruaccent 라이브러리가 설치되지 않았습니다. 'pip install ruaccent'를 실행해주세요.")
+    Accentor = None
+
 
 # ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
 
@@ -35,7 +42,6 @@ if "current_search_query" not in st.session_state:
 if "ocr_output_text" not in st.session_state:
     st.session_state.ocr_output_text = ""
 if "display_text" not in st.session_state:
-    # 'display_text'는 st.text_area의 초기값으로 사용됩니다.
     st.session_state.display_text = "Человек идёт по улице. Это тестовая строка. Хорошо. Я часто читаю эту книгу."
 if "translated_text" not in st.session_state:
     st.session_state.translated_text = ""
@@ -43,12 +49,18 @@ if "last_processed_text" not in st.session_state:
     st.session_state.last_processed_text = "" 
 if "last_processed_query" not in st.session_state:
     st.session_state.last_processed_query = ""
-# st.text_area의 key인 'input_text_area'가 세션 상태에 저장되므로, 이 값도 초기화될 수 있도록 준비합니다.
 if "input_text_area" not in st.session_state:
     st.session_state.input_text_area = st.session_state.display_text
 
 
 mystem = Mystem()
+# 🌟 ruaccent 초기화
+if Accentor:
+    accentor = Accentor()
+    # ruaccent는 ё에 강세를 넣지 않으므로, ё를 텍스트로 인식하지 않도록 설정
+    # mystem 분석을 위해서는 ё가 포함된 텍스트 그대로 처리
+    accentor.case_sensitive = True
+    accentor.check_page = False # 웹 페이지 컨텍스트 무시
 
 # ---------------------- 품사 변환 딕셔너리 및 Mystem 함수 ----------------------
 POS_MAP = {
@@ -78,11 +90,23 @@ def get_pos_ru(word: str) -> str:
             return POS_MAP.get(pos_abbr, '품사')
     return '품사'
 
+# 🌟 2. 강세 표시 함수 추가
+@st.cache_data(show_spinner=False)
+def accentuate_ru(text: str) -> str:
+    if Accentor:
+        # ruaccent는 단어 단위로 강세를 넣으므로, 문장 전체를 처리
+        try:
+            return accentor.process_all(text)
+        except Exception as e:
+            st.warning(f"강세 표시 오류: {e}")
+            return text
+    return text
+
 # ---------------------- OCR 함수 ----------------------
+# (기존 코드와 동일)
 @st.cache_data(show_spinner="이미지에서 텍스트 추출 중")
 def detect_text_from_image(image_bytes):
     try:
-        # GCP SA 키 설정 (Streamlit Secrets 사용)
         if st.secrets.get("GCP_SA_KEY"):
             with open("temp_sa_key.json", "w") as f:
                 json.dump(st.secrets["GCP_SA_KEY"], f)
@@ -116,7 +140,7 @@ def fetch_from_gemini(word, lemma, pos):
     if not client:
         return {"ko_meanings": [f"'{word}'의 API 키 없음 (GEMINI_API_KEY 설정 필요)"], "examples": []}
     
-    # 🌟 수정된 SYSTEM_PROMPT: 격 정보 등 불필요한 부가 정보 제거 명시
+    # 격 정보 등 불필요한 부가 정보 제거를 명시한 SYSTEM_PROMPT
     SYSTEM_PROMPT = "너는 러시아어-한국어 학습 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 최대 두 개만 제공한다. 한국어 뜻을 제공할 때 격 정보, 문법 정보 등 불필요한 부가 정보는 절대 포함하지 않는다. 만약 동사(V)이면, 불완료상(imp)과 완료상(perf) 형태를 함께 제공해야 한다. 반드시 JSON만 출력한다."
     
     if pos == '동사':
@@ -189,7 +213,6 @@ def translate_text(russian_text, highlight_words):
         res = client.models.generate_content(
             model="gemini-2.0-flash", 
             contents=translation_prompt,
-            # 🌟 시스템 지침 추가
             config={"system_instruction": SYSTEM_INSTRUCTION}
         )
         translated = res.text.strip()
@@ -203,6 +226,7 @@ def translate_text(russian_text, highlight_words):
 
     except Exception as e:
         return f"번역 오류 발생: {e}"
+
 
 # ---------------------- 3. 전역 스타일 정의 ----------------------
 
@@ -265,7 +289,6 @@ if uploaded_file is not None:
     if ocr_result and not ocr_result.startswith(("OCR API 키", "Vision API 오류")):
         st.session_state.ocr_output_text = ocr_result
         st.session_state.display_text = ocr_result
-        # st.text_area의 상태도 OCR 결과로 업데이트
         st.session_state.input_text_area = ocr_result
         st.session_state.translated_text = ""
         st.success("이미지에서 텍스트 추출 완료!")
@@ -280,10 +303,8 @@ st.button(
 )
 
 st.subheader("📝 분석 대상 텍스트") 
-# current_text는 st.session_state.input_text_area의 현재 값을 표시합니다.
 current_text = st.text_area(
     "러시아어 텍스트를 입력하거나 위에 업로드된 텍스트를 수정하세요", 
-    # value를 key의 세션 상태로 명시적으로 지정
     value=st.session_state.display_text, 
     height=150, 
     key="input_text_area"
@@ -292,7 +313,6 @@ current_text = st.text_area(
 
 # 텍스트가 수정되면 상태 업데이트 및 번역/분석 상태 초기화
 if current_text != st.session_state.display_text:
-    # st.text_area의 변경 사항이 'display_text'와 동기화되도록 합니다.
     st.session_state.display_text = current_text
     st.session_state.translated_text = ""
     st.session_state.selected_words = []
@@ -361,10 +381,13 @@ def get_highlighted_html(text_to_process, highlight_words):
 
 
 with left:
-    st.subheader("러시아어 텍스트 원문") 
+    st.subheader("러시아어 텍스트 원문 (강세 표시됨)") # 🌟 제목 변경
     
-    # 1. 러시아어 텍스트 하이라이팅 출력
-    ru_html = get_highlighted_html(st.session_state.display_text, st.session_state.selected_words)
+    # 🌟 3. 강세 표시 적용
+    accented_text = accentuate_ru(st.session_state.display_text)
+    
+    # 1. 러시아어 텍스트 하이라이팅 출력 (강세가 표시된 텍스트 사용)
+    ru_html = get_highlighted_html(accented_text, st.session_state.selected_words)
     st.markdown(ru_html, unsafe_allow_html=True)
     
     # 초기화 버튼
@@ -373,7 +396,6 @@ with left:
         st.session_state.clicked_word = None
         st.session_state.word_info = {}
         st.session_state.current_search_query = ""
-        # 텍스트 영역의 상태도 초기화
         st.session_state.display_text = "Человек идёт по улице. Это тестовая строка. Хорошо."
         st.session_state.input_text_area = st.session_state.display_text
         st.session_state.ocr_output_text = ""
@@ -384,8 +406,6 @@ with left:
     st.markdown("---")
     st.button("🔄 선택 및 검색 초기화", key="reset_button", on_click=reset_all_state)
     
-    # if st.session_state.get("reset_button"):
-    #     st.rerun()
 
 # --- 5.2. 단어 상세 정보 (right 컬럼) + 검색 링크 추가 ---
 with right:
@@ -394,24 +414,28 @@ with right:
     current_token = st.session_state.clicked_word
     
     if current_token:
-        lemma = lemmatize_ru(current_token)
+        # ruaccent가 강세를 넣어주므로, 분석 시에는 강세 기호를 제거하여 기본 형태를 찾습니다.
+        clean_token = re.sub(r'[\u0301]', '', current_token)
+        lemma = lemmatize_ru(clean_token)
+        pos = get_pos_ru(clean_token)
         info = st.session_state.word_info.get(lemma, {})
 
         if info and "ko_meanings" in info:
             pos = info.get("pos", "품사") 
             aspect_pair = info.get("aspect_pair") 
             
-            st.markdown(f"### **{current_token}**")
+            # 상세 정보에 강세가 붙은 단어를 표시
+            st.markdown(f"### **{accentuate_ru(clean_token)}**") 
             
             if pos == '동사' and aspect_pair:
-                st.markdown(f"**기본형 (불완료상):** *{aspect_pair.get('imp', lemma)}*")
-                st.markdown(f"**완료상:** *{aspect_pair.get('perf', '정보 없음')}*")
+                st.markdown(f"**기본형 (불완료상):** *{accentuate_ru(aspect_pair.get('imp', lemma))}*")
+                st.markdown(f"**완료상:** *{accentuate_ru(aspect_pair.get('perf', '정보 없음'))}*")
                 st.markdown(f"**품사:** {pos}")
             elif pos == '관용구':
-                st.markdown(f"**구(句) 형태:** *{lemma}*")
+                st.markdown(f"**구(句) 형태:** *{accentuate_ru(lemma)}*")
                 st.markdown(f"**품사:** {pos}")
             else:
-                st.markdown(f"**기본형 (Lemma):** *{lemma}* ({pos})")
+                st.markdown(f"**기본형 (Lemma):** *{accentuate_ru(lemma)}* ({pos})")
             
             st.divider()
 
@@ -426,7 +450,8 @@ with right:
             if examples:
                 st.markdown("#### 📖 예문")
                 for ex in examples:
-                    st.markdown(f"- {ex.get('ru', '')}")
+                    # 예문에도 강세 표시
+                    st.markdown(f"- {accentuate_ru(ex.get('ru', ''))}")
                     st.markdown(f" → {ex.get('ko', '')}")
             else:
                 if ko_meanings and ko_meanings[0].startswith(f"'{current_token}'의 API 키 없음"):
@@ -437,12 +462,9 @@ with right:
                     st.info("예문 정보가 없습니다.")
             
             # --- 외부 검색 링크 추가 (st.link_button 사용) ---
-            encoded_query = urllib.parse.quote(current_token)
+            encoded_query = urllib.parse.quote(clean_token) # 검색 시에는 강세 없는 단어 사용
             
-            # Multitran: 영한 사전 (기본)
             multitran_url = f"[https://www.multitran.com/m.exe?s=](https://www.multitran.com/m.exe?s=){encoded_query}&l1=1&l2=2"
-            
-            # 러시아 국립 코퍼스 (НКРЯ): 검색 페이지로 이동
             corpus_url = f"[http://search.ruscorpora.ru/search.xml?text=](http://search.ruscorpora.ru/search.xml?text=){encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1"
             
             st.markdown("#### 🌐 외부 검색")
@@ -471,23 +493,24 @@ if word_info:
     processed_lemmas = set()
     
     for tok in selected:
-        lemma = lemmatize_ru(tok)
+        clean_tok = re.sub(r'[\u0301]', '', tok)
+        lemma = lemmatize_ru(clean_tok)
         if lemma not in processed_lemmas and lemma in word_info:
             info = word_info[lemma]
             if info.get("ko_meanings") and info["ko_meanings"][0] != "JSON 파싱 오류":
                 pos = info.get("pos", "품사") 
                 
                 if pos == '동사' and info.get("aspect_pair"):
-                    imp = info['aspect_pair'].get('imp', lemma)
-                    perf = info['aspect_pair'].get('perf', '정보 없음')
+                    imp = accentuate_ru(info['aspect_pair'].get('imp', lemma))
+                    perf = accentuate_ru(info['aspect_pair'].get('perf', '정보 없음'))
                     base_form = f"{imp} / {perf}"
                 else:
-                    base_form = lemma
+                    base_form = accentuate_ru(lemma)
 
                 short = "; ".join(info["ko_meanings"][:2])
                 short = f"({pos}) {short}" 
 
-                rows.append({"기본형": base_form, "대표 뜻": short})
+                rows.append({"기본형 (강세포함)": base_form, "대표 뜻": short}) # 🌟 제목 변경
                 processed_lemmas.add(lemma)
 
     if rows:

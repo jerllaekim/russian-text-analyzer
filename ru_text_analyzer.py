@@ -8,7 +8,7 @@ from google import genai
 from google.cloud import vision 
 import io
 import urllib.parse 
-# 🌟 ruaccent 라이브러리 추가
+# ruaccent 라이브러리 추가
 try:
     from ruaccent import Accentor
 except ImportError:
@@ -49,6 +49,7 @@ if "last_processed_text" not in st.session_state:
     st.session_state.last_processed_text = "" 
 if "last_processed_query" not in st.session_state:
     st.session_state.last_processed_query = ""
+# st.text_area의 key인 'input_text_area'가 세션 상태에 저장되므로, 초기값을 설정합니다.
 if "input_text_area" not in st.session_state:
     st.session_state.input_text_area = st.session_state.display_text
 
@@ -57,10 +58,8 @@ mystem = Mystem()
 # 🌟 ruaccent 초기화
 if Accentor:
     accentor = Accentor()
-    # ruaccent는 ё에 강세를 넣지 않으므로, ё를 텍스트로 인식하지 않도록 설정
-    # mystem 분석을 위해서는 ё가 포함된 텍스트 그대로 처리
     accentor.case_sensitive = True
-    accentor.check_page = False # 웹 페이지 컨텍스트 무시
+    accentor.check_page = False 
 
 # ---------------------- 품사 변환 딕셔너리 및 Mystem 함수 ----------------------
 POS_MAP = {
@@ -90,20 +89,21 @@ def get_pos_ru(word: str) -> str:
             return POS_MAP.get(pos_abbr, '품사')
     return '품사'
 
-# 🌟 2. 강세 표시 함수 추가
-@st.cache_data(show_spinner=False)
+# 🌟 2. 강세 표시 함수 (캐시 제거 및 예외 처리 보강)
 def accentuate_ru(text: str) -> str:
-    if Accentor:
-        # ruaccent는 단어 단위로 강세를 넣으므로, 문장 전체를 처리
-        try:
-            return accentor.process_all(text)
-        except Exception as e:
-            st.warning(f"강세 표시 오류: {e}")
-            return text
-    return text
+    """ruaccent를 사용하여 텍스트에 강세 표시를 추가합니다."""
+    # Accentor 객체가 정의되지 않았거나 전역에 없으면 원본 텍스트 반환
+    if not Accentor or 'accentor' not in globals():
+        return text 
+        
+    try:
+        # ruaccent 객체를 사용하여 강세 표시
+        return accentor.process_all(text)
+    except Exception:
+        # 오류 발생 시 원본 텍스트를 반환
+        return text
 
 # ---------------------- OCR 함수 ----------------------
-# (기존 코드와 동일)
 @st.cache_data(show_spinner="이미지에서 텍스트 추출 중")
 def detect_text_from_image(image_bytes):
     try:
@@ -196,7 +196,7 @@ def translate_text(russian_text, highlight_words):
         
     phrases_to_highlight = ", ".join([f"'{w}'" for w in highlight_words])
     
-    # 🌟 수정된 시스템 지침: 오직 번역 결과만 출력하도록 강제
+    # 🌟 시스템 지침: 오직 번역 결과만 출력하도록 강제
     SYSTEM_INSTRUCTION = "너는 번역가이다. 요청된 러시아어 텍스트를 문맥에 맞는 자연스러운 한국어로 번역하고, 절대로 다른 설명, 옵션, 질문, 부가적인 텍스트를 출력하지 않는다. 오직 최종 번역 텍스트만 출력한다."
 
     if phrases_to_highlight:
@@ -263,9 +263,8 @@ def load_default_text():
     NEW_DEFAULT_TEXT를 st.session_state.display_text와 st.text_area의 상태에 모두 반영하고 
     분석 상태를 초기화합니다.
     """
-    # st.text_area의 key인 'input_text_area'의 상태를 직접 업데이트합니다.
+    # st.text_area의 key인 'input_text_area'의 상태를 직접 업데이트하여 버튼이 확실히 작동하도록 합니다.
     st.session_state.input_text_area = NEW_DEFAULT_TEXT 
-    # display_text도 함께 업데이트하여 다른 UI 요소에 반영합니다.
     st.session_state.display_text = NEW_DEFAULT_TEXT 
     
     st.session_state.translated_text = ""
@@ -332,12 +331,14 @@ if manual_input and manual_input != st.session_state.get("last_processed_query")
     st.session_state.clicked_word = manual_input
     
     with st.spinner(f"'{manual_input}'에 대한 정보 분석 중..."):
-        lemma = lemmatize_ru(manual_input)
-        pos = get_pos_ru(manual_input) 
+        # 분석 시 강세 기호 제거
+        clean_input = re.sub(r'[\u0301]', '', manual_input)
+        lemma = lemmatize_ru(clean_input)
+        pos = get_pos_ru(clean_input) 
         try:
-            info = fetch_from_gemini(manual_input, lemma, pos)
-            if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != manual_input:
-                st.session_state.word_info[lemma] = {**info, "loaded_token": manual_input, "pos": pos}  
+            info = fetch_from_gemini(clean_input, lemma, pos)
+            if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != clean_input:
+                st.session_state.word_info[lemma] = {**info, "loaded_token": clean_input, "pos": pos}  
         except Exception as e:
             st.error(f"Gemini 오류: {e}")
             
@@ -362,8 +363,10 @@ def get_highlighted_html(text_to_process, highlight_words):
     )
 
     for phrase in highlight_candidates:
+        # 강세 기호가 포함된 원문과 일치시키기 위해 escape
         escaped_phrase = re.escape(phrase)
         
+        # phrase가 텍스트에 이미 강세가 포함되어 있다고 가정하고 하이라이팅 처리
         if ' ' in phrase:
             display_html = re.sub(
                 f'({escaped_phrase})', 
@@ -371,6 +374,7 @@ def get_highlighted_html(text_to_process, highlight_words):
                 display_html
             )
         else:
+            # 단어 경계를 사용하여 정확히 일치하는 단어 하이라이팅
             pattern = re.compile(r'\b' + escaped_phrase + r'\b')
             display_html = pattern.sub(
                 f'<span class="{selected_class}">{phrase}</span>', 
@@ -381,13 +385,16 @@ def get_highlighted_html(text_to_process, highlight_words):
 
 
 with left:
-    st.subheader("러시아어 텍스트 원문 (강세 표시됨)") # 🌟 제목 변경
+    st.subheader("러시아어 텍스트 원문 (강세 표시됨)") 
     
-    # 🌟 3. 강세 표시 적용
+    # 🌟 강세 표시 적용
     accented_text = accentuate_ru(st.session_state.display_text)
     
-    # 1. 러시아어 텍스트 하이라이팅 출력 (강세가 표시된 텍스트 사용)
-    ru_html = get_highlighted_html(accented_text, st.session_state.selected_words)
+    # 하이라이팅 시 강세가 포함된 단어 목록을 생성해야 함
+    highlight_words_with_accent = [accentuate_ru(w) for w in st.session_state.selected_words]
+    
+    # 러시아어 텍스트 하이라이팅 출력 (강세가 표시된 텍스트 사용)
+    ru_html = get_highlighted_html(accented_text, highlight_words_with_accent)
     st.markdown(ru_html, unsafe_allow_html=True)
     
     # 초기화 버튼
@@ -414,17 +421,16 @@ with right:
     current_token = st.session_state.clicked_word
     
     if current_token:
-        # ruaccent가 강세를 넣어주므로, 분석 시에는 강세 기호를 제거하여 기본 형태를 찾습니다.
-        clean_token = re.sub(r'[\u0301]', '', current_token)
+        # 분석 시 강세 기호 제거 (clean_token)
+        clean_token = re.sub(r'[\u0301]', '', current_token) 
         lemma = lemmatize_ru(clean_token)
-        pos = get_pos_ru(clean_token)
         info = st.session_state.word_info.get(lemma, {})
 
         if info and "ko_meanings" in info:
             pos = info.get("pos", "품사") 
             aspect_pair = info.get("aspect_pair") 
             
-            # 상세 정보에 강세가 붙은 단어를 표시
+            # 상세 정보에는 강세가 붙은 단어를 표시
             st.markdown(f"### **{accentuate_ru(clean_token)}**") 
             
             if pos == '동사' and aspect_pair:
@@ -510,7 +516,7 @@ if word_info:
                 short = "; ".join(info["ko_meanings"][:2])
                 short = f"({pos}) {short}" 
 
-                rows.append({"기본형 (강세포함)": base_form, "대표 뜻": short}) # 🌟 제목 변경
+                rows.append({"기본형 (강세포함)": base_form, "대표 뜻": short})
                 processed_lemmas.add(lemma)
 
     if rows:

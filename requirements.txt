@@ -3,3 +3,4 @@ pymystem3
 google-genai
 pandas
 google.cloud.vision
+ruaccent

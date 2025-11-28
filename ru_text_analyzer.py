@@ -451,4 +451,82 @@ with right:
             with col1:
                 st.link_button("📚 Multitran 검색", url=multitran_url)
             with col2:
-                st.link_button("📖 국립 코퍼스 검색", url=corpus_url
+                st.link_button("📖 국립 코퍼스 검색", url=corpus_url)
+            
+        else:
+            st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
+            
+    else:
+        st.info("검색창에 단어를 입력하면 여기에 상세 정보가 표시됩니다.")
+
+
+# ---------------------- 6. 하단: 누적 목록 + CSV ----------------------
+st.divider()
+st.subheader("📝 선택 단어 목록 (기본형 기준)") 
+
+selected = st.session_state.selected_words
+word_info = st.session_state.word_info
+
+if word_info:
+    rows = []
+    processed_lemmas = set()
+    
+    for tok in selected:
+        clean_tok = tok
+        lemma = lemmatize_ru(clean_tok)
+        if lemma not in processed_lemmas and lemma in word_info:
+            info = word_info[lemma]
+            if info.get("ko_meanings") and info["ko_meanings"][0] != "JSON 파싱 오류":
+                pos = info.get("pos", "품사") 
+                
+                if pos == '동사' and info.get("aspect_pair"):
+                    imp = info['aspect_pair'].get('imp', lemma)
+                    perf = info['aspect_pair'].get('perf', '정보 없음')
+                    base_form = f"{imp} / {perf}"
+                else:
+                    base_form = lemma
+
+                short = "; ".join(info["ko_meanings"][:2])
+                short = f"({pos}) {short}" 
+
+                rows.append({"기본형": base_form, "대표 뜻": short})
+                processed_lemmas.add(lemma)
+
+    if rows:
+        df = pd.DataFrame(rows)
+        st.dataframe(df, hide_index=True)
+    else:
+        st.info("선택된 단어의 정보가 로드 중이거나, 표시할 정보가 없습니다.")
+
+
+# ---------------------- 7. 하단: 한국어 번역본 (가장 아래에 위치) ----------------------
+st.divider()
+st.subheader("한국어 번역본") 
+
+# 텍스트가 변경되었거나 아직 번역되지 않았다면 새로 번역을 요청
+if st.session_state.translated_text == "" or current_text != st.session_state.last_processed_text:
+    st.session_state.translated_text = translate_text(
+        current_text, 
+        st.session_state.selected_words
+    )
+    st.session_state.last_processed_text = current_text
+
+translated_text = st.session_state.translated_text
+
+if translated_text.startswith("Gemini API 키가 설정되지"):
+    st.error(translated_text)
+elif translated_text.startswith("번역 오류 발생"):
+    st.error(translated_text)
+else:
+    st.markdown(f'<div class="text-container" style="color: #333; font-weight: 500;">{translated_text}</div>', unsafe_allow_html=True)
+
+# ---------------------- 8. 저작권 표시 (페이지 최하단) ----------------------
+st.markdown("---")
+st.markdown("""
+<div style="text-align: center; font-size: 0.75em; color: #888;">
+    이 페이지는 연세대학교 노어노문학과 25-2 러시아어 교육론 5팀의 프로젝트 결과물입니다. 
+    <br>
+    본 페이지의 내용, 기능 및 데이터를 학습 목적 이외의 용도로 무단 복제, 배포, 상업적 이용할 경우, 
+    관련 법령에 따라 민사상 손해배상 청구 및 형사상 처벌을 받을 수 있습니다.
+</div>
+""", unsafe_allow_html=True)

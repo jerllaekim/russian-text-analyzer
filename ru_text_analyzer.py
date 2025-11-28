@@ -329,53 +329,23 @@ st.markdown("---")
 # ---------------------- 5. 텍스트 하이라이팅 및 상세 정보 레이아웃 ----------------------
 
 left, right = st.columns([2, 1])
-
-# --- 5.1. 하이라이팅 로직 (러시아어 원문) ---
-def get_highlighted_html(text_to_process, highlight_words):
-    selected_class = "word-selected"
-    display_html = text_to_process
-    
-    highlight_candidates = sorted(
-        [word for word in highlight_words if word.strip()],
-        key=len,
-        reverse=True
-    )
-
-    for phrase in highlight_candidates:
-        escaped_phrase = re.escape(phrase)
-        
-        if ' ' in phrase:
-            display_html = re.sub(
-                f'({escaped_phrase})', 
-                f'<span class="{selected_class}">\\1</span>', 
-                display_html
-            )
-        else:
-            pattern = re.compile(r'\b' + escaped_phrase + r'\b')
-            display_html = pattern.sub(
-                f'<span class="{selected_class}">{phrase}</span>', 
-                display_html
-            )
-    
-    return f'<div class="text-container">{display_html}</div>'
-
+# ---------------------- 5.1. 하이라이팅 로직 (러시아어 원문) 수정 ----------------------
 
 with left:
     st.subheader("러시아어 텍스트 원문")
     
-    # 🌟 외부 사이트 연결 버튼 (JavaScript를 이용한 강제 새 창 열기)
-    ACCENT_ONLINE_URL = "[https://russiangram.com/](https://russiangram.com/)"
+    # 🌟 1. JavaScript 인라인 버튼을 st.link_button으로 교체
+    ACCENT_ONLINE_URL = "https://russiangram.com/"
     
-    st.markdown(
-        f"""
-        <button onclick="window.open('{ACCENT_ONLINE_URL}', '_blank')" 
-                style="background-color: #f0f2f6; color: #333; border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.25rem 0.75rem; font-size: 1rem; cursor: pointer;">
-            🔊 강세 표시 사이트로 이동 (russiangram.com)
-        </button>
-        """, 
-        unsafe_allow_html=True
+    st.link_button(
+        "🔊 강세 표시 사이트로 이동 (russiangram.com)", 
+        url=ACCENT_ONLINE_URL, 
+        help="새 창으로 russiangram.com이 열립니다. 브라우저의 팝업 차단 기능이 켜져 있다면 해제해주세요.",
+        # target="_blank"는 st.link_button의 기본 동작이므로 명시하지 않아도 됩니다. 
+        # 하지만 명시적으로 새 탭을 열도록 유도합니다.
+        # type="secondary" 또는 type="primary"를 사용하지 않아 기본 스타일을 유지합니다.
     )
-    st.info("⬆️ 새 창으로 russiangram.com이 열립니다. 텍스트를 복사하여 붙여넣어 강세를 확인하세요.")
+    st.info("⬆️ 새 창(탭)으로 russiangram.com이 열립니다. 텍스트를 복사하여 붙여넣어 강세를 확인하세요. **만약 창이 열리지 않으면 브라우저의 팝업 차단을 해제해주세요.**")
     
     # 러시아어 텍스트 하이라이팅 출력 (current_text 사용)
     ru_html = get_highlighted_html(current_text, st.session_state.selected_words)

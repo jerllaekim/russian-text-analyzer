@@ -8,6 +8,7 @@ from google import genai
 from google.cloud import vision 
 import io
 import urllib.parse 
+# ruaccent 관련 import 제거
 
 # ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
 
@@ -36,6 +37,7 @@ if "current_search_query" not in st.session_state:
     st.session_state.current_search_query = ""
 if "ocr_output_text" not in st.session_state:
     st.session_state.ocr_output_text = ""
+# 🌟 input_text_area를 메인 텍스트 상태로 사용 (경고 방지)
 if "input_text_area" not in st.session_state:
     st.session_state.input_text_area = DEFAULT_TEST_TEXT
 if "translated_text" not in st.session_state:
@@ -168,6 +170,7 @@ def translate_text(russian_text, highlight_words):
         
     phrases_to_highlight = ", ".join([f"'{w}'" for w in highlight_words])
     
+    # 🌟 SyntaxError 해결: 세 개의 작은따옴표를 사용하여 여러 줄 문자열을 안전하게 정의
     SYSTEM_INSTRUCTION = '''너는 번역가이다. 요청된 러시아어 텍스트를 문맥에 맞는 자연스러운 한국어로 번역하고, 절대로 다른 설명, 옵션, 질문, 부가적인 텍스트를 출력하지 않는다. 오직 최종 번역 텍스트만 출력한다.'''
 
     if phrases_to_highlight:
@@ -224,12 +227,27 @@ st.markdown("""
         margin-top: 15px;
         flex-wrap: wrap;
     }
+    /* 🌟 버튼 스타일: 기본 Streamlit 버튼과 유사하게 설정 (밝은 회색) */
+    .stButton>button {
+        background-color: #f0f2f6;
+        color: #333;
+        border: 1px solid #ccc;
+        border-radius: 0.5rem;
+    }
+    .stButton>button:hover {
+        background-color: #e8e8e8;
+        border-color: #aaa;
+    }
 </style>
 """, unsafe_allow_html=True)
 
 
 # 🌟 4. 버튼 클릭 시 텍스트를 로드하는 콜백 함수 정의
 def load_default_text():
+    """
+    NEW_DEFAULT_TEXT를 st.session_state.input_text_area에 반영하고 
+    분석 상태를 초기화합니다.
+    """
     st.session_state.input_text_area = NEW_DEFAULT_TEXT 
     st.session_state.translated_text = ""
     st.session_state.selected_words = []
@@ -345,16 +363,19 @@ def get_highlighted_html(text_to_process, highlight_words):
 with left:
     st.subheader("러시아어 텍스트 원문")
     
-    # 🌟 외부 사이트 연결 버튼 (색상 및 로직 변경)
+    # 🌟 외부 사이트 연결 버튼 (JavaScript를 이용한 강제 새 창 열기)
     ACCENT_ONLINE_URL = "[https://russiangram.com/](https://russiangram.com/)"
     
-    st.link_button(
-        "🔊 강세 표시 사이트로 이동 (russiangram.com)", 
-        url=ACCENT_ONLINE_URL, 
-        help="새 창에서 russiangram.com으로 이동합니다. 텍스트를 직접 복사하여 붙여넣어 강세를 확인하세요."
-        # type="primary" 제거하여 기본 버튼 색상 사용
+    st.markdown(
+        f"""
+        <button onclick="window.open('{ACCENT_ONLINE_URL}', '_blank')" 
+                style="background-color: #f0f2f6; color: #333; border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.25rem 0.75rem; font-size: 1rem; cursor: pointer;">
+            🔊 강세 표시 사이트로 이동 (russiangram.com)
+        </button>
+        """, 
+        unsafe_allow_html=True
     )
-    st.info("⬆️ russiangram.com으로 이동 후, 위 텍스트를 복사하여 사이트에 붙여넣으면 강세를 확인할 수 있습니다.")
+    st.info("⬆️ 새 창으로 russiangram.com이 열립니다. 텍스트를 복사하여 붙여넣어 강세를 확인하세요.")
     
     # 러시아어 텍스트 하이라이팅 출력 (current_text 사용)
     ru_html = get_highlighted_html(current_text, st.session_state.selected_words)

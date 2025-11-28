@@ -1,6 +1,12 @@
 streamlit
-pymystem3
-google-genai
 pandas
-google.cloud.vision
+google-genai
+google-cloud-vision
+
+# 🌟 문제의 원인이 될 수 있는 라이브러리 버전을 고정합니다.
+# pymystem3의 알려진 안정 버전
+pymystem3==0.1.10
+
+# ruaccent의 안정 버전 (최신 버전이 문제를 일으킬 경우)
+# ruaccent==1.0.0
 ruaccent

@@ -287,4 +287,232 @@ st.subheader("🔍 단어/구 검색")
 manual_input = st.text_input("단어 또는 구를 입력하고 Enter (예: 'идёт по улице')", key="current_search_query")
 
 if manual_input and manual_input != st.session_state.get("last_processed_query"):
-    if manual_input not in st.
+    if manual_input not in st.session_state.selected_words:
+        st.session_state.selected_words.append(manual_input)
+    
+    st.session_state.clicked_word = manual_input
+    
+    with st.spinner(f"'{manual_input}'에 대한 정보 분석 중..."):
+        clean_input = manual_input
+        lemma = lemmatize_ru(clean_input)
+        pos = get_pos_ru(clean_input) 
+        try:
+            info = fetch_from_gemini(clean_input, lemma, pos)
+            if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != clean_input:
+                st.session_state.word_info[lemma] = {**info, "loaded_token": clean_input, "pos": pos}  
+        except Exception as e:
+            st.error(f"Gemini 오류: {e}")
+            
+    st.session_state.last_processed_query = manual_input 
+
+st.markdown("---") 
+
+
+# ---------------------- 5. 텍스트 하이라이팅 및 상세 정보 레이아웃 ----------------------
+
+left, right = st.columns([2, 1])
+
+# --- 5.1. 하이라이팅 로직 (러시아어 원문) ---
+def get_highlighted_html(text_to_process, highlight_words):
+    selected_class = "word-selected"
+    display_html = text_to_process
+    
+    highlight_candidates = sorted(
+        [word for word in highlight_words if word.strip()],
+        key=len,
+        reverse=True
+    )
+
+    for phrase in highlight_candidates:
+        escaped_phrase = re.escape(phrase)
+        
+        if ' ' in phrase:
+            display_html = re.sub(
+                f'({escaped_phrase})', 
+                f'<span class="{selected_class}">\\1</span>', 
+                display_html
+            )
+        else:
+            pattern = re.compile(r'\b' + escaped_phrase + r'\b')
+            display_html = pattern.sub(
+                f'<span class="{selected_class}">{phrase}</span>', 
+                display_html
+            )
+    
+    return f'<div class="text-container">{display_html}</div>'
+
+
+with left:
+    st.subheader("러시아어 텍스트 원문")
+    
+    # 🌟 외부 사이트 연결 버튼 (색상 및 로직 변경)
+    ACCENT_ONLINE_URL = "[https://russiangram.com/](https://russiangram.com/)"
+    
+    st.link_button(
+        "🔊 강세 표시 사이트로 이동 (russiangram.com)", 
+        url=ACCENT_ONLINE_URL, 
+        help="새 창에서 russiangram.com으로 이동합니다. 텍스트를 직접 복사하여 붙여넣어 강세를 확인하세요."
+        # type="primary" 제거하여 기본 버튼 색상 사용
+    )
+    st.info("⬆️ russiangram.com으로 이동 후, 위 텍스트를 복사하여 사이트에 붙여넣으면 강세를 확인할 수 있습니다.")
+    
+    # 러시아어 텍스트 하이라이팅 출력 (current_text 사용)
+    ru_html = get_highlighted_html(current_text, st.session_state.selected_words)
+    st.markdown(ru_html, unsafe_allow_html=True)
+    
+    # 초기화 버튼
+    def reset_all_state():
+        st.session_state.selected_words = []
+        st.session_state.clicked_word = None
+        st.session_state.word_info = {}
+        st.session_state.current_search_query = ""
+        st.session_state.input_text_area = DEFAULT_TEST_TEXT
+        st.session_state.ocr_output_text = ""
+        st.session_state.translated_text = ""
+        st.session_state.last_processed_text = ""
+
+
+    st.markdown("---")
+    st.button("🔄 선택 및 검색 초기화", key="reset_button", on_click=reset_all_state)
+    
+
+# --- 5.2. 단어 상세 정보 (right 컬럼) + 검색 링크 추가 ---
+with right:
+    st.subheader("단어 상세 정보")
+    
+    current_token = st.session_state.clicked_word
+    
+    if current_token:
+        clean_token = current_token
+        lemma = lemmatize_ru(clean_token)
+        info = st.session_state.word_info.get(lemma, {})
+
+        if info and "ko_meanings" in info:
+            pos = info.get("pos", "품사") 
+            aspect_pair = info.get("aspect_pair") 
+            
+            st.markdown(f"### **{clean_token}**") 
+            
+            if pos == '동사' and aspect_pair:
+                st.markdown(f"**기본형 (불완료상):** *{aspect_pair.get('imp', lemma)}*")
+                st.markdown(f"**완료상:** *{aspect_pair.get('perf', '정보 없음')}*")
+                st.markdown(f"**품사:** {pos}")
+            elif pos == '관용구':
+                st.markdown(f"**구(句) 형태:** *{lemma}*")
+                st.markdown(f"**품사:** {pos}")
+            else:
+                st.markdown(f"**기본형 (Lemma):** *{lemma}* ({pos})")
+            
+            st.divider()
+
+            ko_meanings = info.get("ko_meanings", [])
+            examples = info.get("examples", [])
+
+            if ko_meanings:
+                st.markdown("#### 한국어 뜻")
+                for m in ko_meanings:
+                    st.markdown(f"- **{m}**")
+
+            if examples:
+                st.markdown("#### 📖 예문")
+                for ex in examples:
+                    st.markdown(f"- {ex.get('ru', '')}")
+                    st.markdown(f" → {ex.get('ko', '')}")
+            else:
+                if ko_meanings and ko_meanings[0].startswith(f"'{current_token}'의 API 키 없음"):
+                    st.warning("API 키가 설정되지 않아 예문을 불러올 수 없습니다.")
+                elif ko_meanings and ko_meanings[0] == "JSON 파싱 오류":
+                    st.error("Gemini API 정보 오류.")
+                else:
+                    st.info("예문 정보가 없습니다.")
+            
+            # --- 외부 검색 링크 추가 (st.link_button 사용) ---
+            encoded_query = urllib.parse.quote(clean_token)
+            
+            multitran_url = f"[https://www.multitran.com/m.exe?s=](https://www.multitran.com/m.exe?s=){encoded_query}&l1=1&l2=2"
+            corpus_url = f"[http://search.ruscorpora.ru/search.xml?text=](http://search.ruscorpora.ru/search.xml?text=){encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1"
+            
+            st.markdown("#### 🌐 외부 검색")
+            col1, col2 = st.columns(2)
+            with col1:
+                st.link_button("📚 Multitran 검색", url=multitran_url)
+            with col2:
+                st.link_button("📖 국립 코퍼스 검색", url=corpus_url)
+            
+        else:
+            st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
+            
+    else:
+        st.info("검색창에 단어를 입력하면 여기에 상세 정보가 표시됩니다.")
+
+
+# ---------------------- 6. 하단: 누적 목록 + CSV ----------------------
+st.divider()
+st.subheader("📝 선택 단어 목록 (기본형 기준)") 
+
+selected = st.session_state.selected_words
+word_info = st.session_state.word_info
+
+if word_info:
+    rows = []
+    processed_lemmas = set()
+    
+    for tok in selected:
+        clean_tok = tok
+        lemma = lemmatize_ru(clean_tok)
+        if lemma not in processed_lemmas and lemma in word_info:
+            info = word_info[lemma]
+            if info.get("ko_meanings") and info["ko_meanings"][0] != "JSON 파싱 오류":
+                pos = info.get("pos", "품사") 
+                
+                if pos == '동사' and info.get("aspect_pair"):
+                    imp = info['aspect_pair'].get('imp', lemma)
+                    perf = info['aspect_pair'].get('perf', '정보 없음')
+                    base_form = f"{imp} / {perf}"
+                else:
+                    base_form = lemma
+
+                short = "; ".join(info["ko_meanings"][:2])
+                short = f"({pos}) {short}" 
+
+                rows.append({"기본형": base_form, "대표 뜻": short})
+                processed_lemmas.add(lemma)
+
+    if rows:
+        df = pd.DataFrame(rows)
+        st.dataframe(df, hide_index=True)
+    else:
+        st.info("선택된 단어의 정보가 로드 중이거나, 표시할 정보가 없습니다.")
+
+
+# ---------------------- 7. 하단: 한국어 번역본 (가장 아래에 위치) ----------------------
+st.divider()
+st.subheader("한국어 번역본") 
+
+if st.session_state.translated_text == "" or current_text != st.session_state.last_processed_text:
+    st.session_state.translated_text = translate_text(
+        current_text, 
+        st.session_state.selected_words
+    )
+    st.session_state.last_processed_text = current_text
+
+translated_text = st.session_state.translated_text
+
+if translated_text.startswith("Gemini API 키가 설정되지"):
+    st.error(translated_text)
+elif translated_text.startswith("번역 오류 발생"):
+    st.error(translated_text)
+else:
+    st.markdown(f'<div class="text-container" style="color: #333; font-weight: 500;">{translated_text}</div>', unsafe_allow_html=True)
+
+# ---------------------- 8. 저작권 표시 (페이지 최하단) ----------------------
+st.markdown("---")
+st.markdown("""
+<div style="text-align: center; font-size: 0.75em; color: #888;">
+    이 페이지는 연세대학교 노어노문학과 25-2 러시아어 교육론 5팀의 프로젝트 결과물입니다. 
+    <br>
+    본 페이지의 내용, 기능 및 데이터를 학습 목적 이외의 용도로 무단 복제, 배포, 상업적 이용할 경우, 
+    관련 법령에 따라 민사상 손해배상 청구 및 형사상 처벌을 받을 수 있습니다.
+</div>
+""", unsafe_allow_html=True)
+````http://googleusercontent.com/image_generation_content/0

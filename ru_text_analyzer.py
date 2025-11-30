@@ -550,22 +550,14 @@ with left:
                 st.error(tts_result)
 
     with col_accent:
-        ACCENT_ONLINE_URL = "[https://russiangram.com/](https://russiangram.com/)" 
+        ACCENT_ONLINE_URL = "https://russiangram.com/"
         
-        # 🌟 JavaScript를 직접 사용하여 새 탭 열기
-        # 이 HTML/JS 조합은 Streamlit의 경로 재작성을 우회하는 가장 확실한 방법입니다.
-        js_code = f"window.open('{ACCENT_ONLINE_URL}', '_blank');"
-        
+        # 🌟 순수 Markdown 하이퍼링크로 변경
         st.markdown(
-            f"""
-            <button onclick="{js_code}" 
-                    style="background-color: #f0f2f6; color: #333; border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.3rem 0.5rem; margin: 0; cursor: pointer;">
-                🔊 강세 표시 사이트로 이동 (russiangram.com)
-            </button>
-            """,
-            unsafe_allow_html=True
+            f"🔊 [강세 표시 사이트로 이동 (russiangram.com)]({ACCENT_ONLINE_URL})",
+            unsafe_allow_html=False # Markdown 링크이므로 안전함
         )
-        st.info("⬆️ 강세 확인을 위해 새 탭으로 russiangram.com이 열립니다. (JavaScript 호출로 변경)")
+        st.info("⬆️ 강세 확인을 위해 새 탭으로 russiangram.com이 열립니다. (클릭 가능한 텍스트 링크로 변경)")
 
 
     # 오디오 플레이어 표시 (TTS 버튼 클릭 후 오디오 데이터가 있고 텍스트가 일치할 때만)
@@ -648,40 +640,22 @@ with right:
                 else:
                     st.info("예문 정보가 없습니다.")
             
-            # --- 외부 검색 링크 수정 (JavaScript 방식 적용) ---
+            # --- 외부 검색 링크 수정 (하이퍼링크로 복원) ---
             encoded_query = urllib.parse.quote(clean_token)
             
-            multitran_url = f"[https://www.multitran.com/m.exe?s=](https://www.multitran.com/m.exe?s=){encoded_query}&l1=1&l2=2" 
-            corpus_url = f"[http://search.ruscorpora.ru/search.xml?text=](http://search.ruscorpora.ru/search.xml?text=){encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1" 
+            multitran_url = f"https://www.multitran.com/m.exe?s={encoded_query}&l1=1&l2=2" 
+            corpus_url = f"http://search.ruscorpora.ru/search.xml?text={encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1" 
             
             st.markdown("#### 🌐 외부 검색")
             col1, col2 = st.columns(2)
             
-            # Multitran 링크 (JavaScript)
+            # Multitran 링크 (순수 Markdown 하이퍼링크)
             with col1:
-                js_multitran = f"window.open('{multitran_url}', '_blank');"
-                st.markdown(
-                    f"""
-                    <button onclick="{js_multitran}" 
-                            style="background-color: #f0f2f6; color: #333; border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.3rem 0.5rem; margin: 0; cursor: pointer;">
-                        📚 Multitran 검색
-                    </button>
-                    """,
-                    unsafe_allow_html=True
-                )
+                st.markdown(f"📚 [Multitran 검색]({multitran_url})")
             
-            # 국립 코퍼스 링크 (JavaScript)
+            # 국립 코퍼스 링크 (순수 Markdown 하이퍼링크)
             with col2:
-                js_corpus = f"window.open('{corpus_url}', '_blank');"
-                st.markdown(
-                    f"""
-                    <button onclick="{js_corpus}" 
-                            style="background-color: #f0f2f6; color: #333; border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.3rem 0.5rem; margin: 0; cursor: pointer;">
-                        📖 국립 코퍼스 검색
-                    </button>
-                    """,
-                    unsafe_allow_html=True
-                )
+                st.markdown(f"📖 [국립 코퍼스 검색]({corpus_url})")
             
         else:
             st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")

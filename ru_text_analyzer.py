@@ -557,7 +557,6 @@ with left:
             f"🔊 [강세 표시 사이트로 이동 (russiangram.com)]({ACCENT_ONLINE_URL})",
             unsafe_allow_html=False # Markdown 링크이므로 안전함
         )
-        st.info("⬆️ 강세 확인을 위해 새 탭으로 russiangram.com이 열립니다. (클릭 가능한 텍스트 링크로 변경)")
 
 
     # 오디오 플레이어 표시 (TTS 버튼 클릭 후 오디오 데이터가 있고 텍스트가 일치할 때만)

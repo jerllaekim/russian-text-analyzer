@@ -8,10 +8,8 @@ from google import genai
 from google.cloud import vision 
 import io
 import urllib.parse 
-import struct # WAV 헤더 생성을 위해 추가
-from base64 import b64decode # Base64 디코딩을 위해 추가
 from typing import Union # Python 버전 호환성을 위해 추가
-import time # 재시도 지연을 위해 추가
+# struct, base64, time 모듈은 TTS 기능 제거로 인해 삭제합니다.
 
 # ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
 
@@ -47,12 +45,7 @@ if "last_processed_text" not in st.session_state:
     st.session_state.last_processed_text = "" 
 if "last_processed_query" not in st.session_state:
     st.session_state.last_processed_query = ""
-if "tts_audio" not in st.session_state: # TTS 오디오 저장
-    st.session_state.tts_audio = None
-if "tts_text_key" not in st.session_state: # TTS 오디오와 텍스트 일치 확인용
-    st.session_state.tts_text_key = ""
-if "prepared_tts_text" not in st.session_state: # TTS API에 전달될 텍스트 미리보기용
-    st.session_state.prepared_tts_text = ""
+# TTS 관련 세션 상태 제거: tts_audio, tts_text_key, prepared_tts_text
 
 
 mystem = Mystem()
@@ -109,44 +102,6 @@ def detect_text_from_image(image_bytes):
     except Exception as e:
         return f"OCR 처리 중 오류 발생: {e}"
 
-
-# ---------------------- TTS WAV 변환 함수 ----------------------
-
-def pcm_to_wav(pcm_data: bytes, sample_rate: int) -> bytes:
-    """Converts raw 16-bit PCM data to a WAV file format.
-    Assumes 1 channel, 16-bit depth (2 bytes per sample).
-    """
-    channels = 1
-    sample_width = 2
-    
-    # RIFF header
-    chunk_id = b'RIFF'
-    chunk_size = 36 + len(pcm_data)
-    format_type = b'WAVE'
-
-    # fmt sub-chunk
-    sub_chunk1_id = b'fmt '
-    sub_chunk1_size = 16  # PCM
-    audio_format = 1  # PCM
-    byte_rate = sample_rate * channels * sample_width
-    block_align = channels * sample_width
-    bits_per_sample = 16
-
-    # data sub-chunk
-    sub_chunk2_id = b'data'
-    sub_chunk2_size = len(pcm_data)
-
-    wav_header = struct.pack(
-        '<4sI4s'  # RIFF header
-        '4sIHHIIHH'  # fmt sub-chunk
-        '4sIHHIIHH'  # fmt sub-chunk
-        '4sI',  # data sub-chunk
-        chunk_id, chunk_size, format_type,
-        sub_chunk1_id, sub_chunk1_size, audio_format, channels, sample_rate, byte_rate, block_align, bits_per_sample,
-        sub_chunk2_id, sub_chunk2_size
-    )
-
-    return wav_header + pcm_data
 
 # ---------------------- 1. Gemini 연동 함수 (기존) ----------------------
 
@@ -205,123 +160,8 @@ def fetch_from_gemini(word, lemma, pos):
     except json.JSONDecodeError:
         return {"ko_meanings": ["JSON 파싱 오류"], "examples": []}
 
-# ---------------------- TTS 텍스트 준비 함수 (신규) ----------------------
 
-@st.cache_data(show_spinner=False)
-def prepare_tts_text(russian_text: str, max_chars: int = 300) -> str:
-    """TTS API에 전달하기 위해 텍스트를 정제하고 분할합니다."""
-    
-    # 1. 텍스트 정리
-    # 러시아어/영어 알파벳, 숫자, 기본적인 구두점 외 제거
-    clean_text = re.sub(r'[^а-яА-ЯёЁa-zA-Z0-9\s.,;?!:\-—()«»]', '', russian_text) 
-    clean_text = re.sub(r'\s+', ' ', clean_text).strip()
-
-    if not clean_text:
-        return "TTS 오류: 유효한 문자가 없어 처리할 수 없습니다."
-
-    # 2. 문장 단위로 텍스트 자르기 (max_chars 제한)
-    final_text_to_process = clean_text
-    
-    if len(clean_text) > max_chars:
-        search_range = clean_text[:max_chars + 50] 
-        sentence_endings = re.findall(r'([.?!])', search_range)
-        
-        if sentence_endings:
-            last_ending_char = sentence_endings[-1]
-            last_ending_index = search_range.rfind(last_ending_char)
-            # 마지막 종결 기호까지의 텍스트를 사용
-            final_text_to_process = clean_text[:last_ending_index + 1]
-        else:
-            # 종결 기호가 없으면 그냥 max_chars에서 자르고 ... 추가
-            final_text_to_process = clean_text[:max_chars] + "..."
-    
-    if not final_text_to_process.strip():
-        return "TTS 오류: 처리할 수 있는 유효한 텍스트 부분이 없습니다."
-
-    return final_text_to_process
-
-
-# ---------------------- 2. TTS API 호출 함수 (재시도 로직 강화) ----------------------
-
-@st.cache_data(show_spinner="음성 파일 생성 중...") # 캐싱 재활성화
-def fetch_tts_audio(tts_prompt: str) -> Union[bytes, str]:
-    client = get_gemini_client()
-    if not client:
-        return "Gemini API 키가 설정되지 않아 TTS를 수행할 수 없습니다."
-    
-    TTS_VOICE = "Kore" 
-    MAX_RETRIES = 3 
-
-    # tts_prompt는 이미 prepare_tts_text 함수를 통해 정제된 텍스트입니다.
-    if tts_prompt.startswith("TTS 오류:"):
-        return tts_prompt
-
-    payload = {
-        "contents": [{
-            "parts": [{"text": tts_prompt}] 
-        }],
-        "generationConfig": {
-            "responseModalities": ["AUDIO"],
-            "speechConfig": {
-                "voiceConfig": {
-                    "prebuiltVoiceConfig": {"voiceName": TTS_VOICE}
-                }
-            }
-        },
-    }
-
-    # API 호출 및 재시도 로직
-    for attempt in range(MAX_RETRIES):
-        try:
-            response = client.models.generate_content(
-                model="gemini-2.5-flash-preview-tts", 
-                contents=payload['contents'],
-                config=payload['generationConfig']
-            )
-
-            if not response.candidates or not response.candidates[0].content.parts:
-                if attempt < MAX_RETRIES - 1:
-                    time.sleep(2 ** attempt)
-                    continue
-                return "TTS API 오류: 유효한 응답 구조를 받지 못했습니다. (후보 또는 파트 누락)"
-
-            audio_part = response.candidates[0].content.parts[0]
-            
-            # 오디오 데이터 존재 여부 검사
-            if hasattr(audio_part, 'inlineData') and audio_part.inlineData and audio_part.inlineData.data:
-                # 성공적으로 데이터 획득
-                base64_data = audio_part.inlineData.data
-                mime_type_full = audio_part.inlineData.mimeType
-                
-                rate_match = re.search(r'rate=(\d+)', mime_type_full)
-                sample_rate = int(rate_match.group(1)) if rate_match else 24000 
-
-                pcm_data = b64decode(base64_data)
-                wav_bytes = pcm_to_wav(pcm_data, sample_rate)
-                
-                return wav_bytes # 성공 시 함수 종료
-
-            # 오디오 데이터 누락 재시도
-            if attempt < MAX_RETRIES - 1:
-                time.sleep(2 ** attempt)
-                continue
-            
-            # 모든 재시도 실패 후 최종 오류 메시지 반환 (TTS_PROMPT 포함)
-            if hasattr(audio_part, 'text') and audio_part.text:
-                 return f"TTS API 오류: 오디오 데이터 누락. 텍스트 응답: '{audio_part.text[:50]}...' API에 전달된 텍스트: '{tts_prompt[:150]}...'"
-            
-            return f"TTS API 오류: 음성 데이터(inlineData.data)가 응답에 포함되지 않았습니다. API에 전달된 텍스트: '{tts_prompt[:150]}...'"
-
-        except Exception as e:
-            if attempt < MAX_RETRIES - 1:
-                time.sleep(2 ** attempt)
-                continue
-            return f"TTS 처리 중 예외 발생: {e}"
-    
-    return f"TTS API 오류: 최대 재시도 횟수 초과. API에 전달된 텍스트: '{tts_prompt[:150]}...'"
-
-
-# ---------------------- 3. 텍스트 번역 함수 (기존) ----------------------
+# ---------------------- 2. 텍스트 번역 함수 (기존) ----------------------
 
 @st.cache_data(show_spinner="텍스트를 한국어로 번역하는 중...")
 def translate_text(russian_text, highlight_words):
@@ -362,7 +202,7 @@ def translate_text(russian_text, highlight_words):
         return f"번역 오류 발생: {e}"
 
 
-# ---------------------- 4. 전역 스타일 정의 ----------------------
+# ---------------------- 3. 전역 스타일 정의 ----------------------
 
 st.markdown("""
 <style>
@@ -402,7 +242,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# 🌟 5. 버튼 클릭 시 텍스트를 로드하는 콜백 함수 정의
+# 🌟 4. 버튼 클릭 시 텍스트를 로드하는 콜백 함수 정의
 def load_default_text():
     """
     NEW_DEFAULT_TEXT를 st.session_state.input_text_area에 반영하고 
@@ -415,11 +255,10 @@ def load_default_text():
     st.session_state.word_info = {}
     st.session_state.current_search_query = ""
     st.session_state.last_processed_query = ""
-    st.session_state.tts_audio = None # TTS 상태 초기화
-    st.session_state.tts_text_key = "" # TTS 상태 초기화
-    st.session_state.prepared_tts_text = prepare_tts_text(NEW_DEFAULT_TEXT) # TTS 미리보기 초기화
+    # TTS 관련 세션 상태 초기화 제거
 
-# 🌟 6. 하이라이팅 로직 함수 정의 
+
+# 🌟 5. 하이라이팅 로직 함수 정의 
 def get_highlighted_html(text_to_process, highlight_words):
     selected_class = "word-selected"
     display_html = text_to_process
@@ -451,9 +290,9 @@ def get_highlighted_html(text_to_process, highlight_words):
     return f'<div class="text-container">{display_html}</div>'
 
 
-# ---------------------- 7. UI 배치 및 메인 로직 ----------------------
+# ---------------------- 6. UI 배치 및 메인 로직 ----------------------
 
-# --- 7.1. OCR 및 텍스트 입력 섹션 ---
+# --- 6.1. OCR 및 텍스트 입력 섹션 ---
 st.subheader("🖼️ 이미지에서 텍스트 추출(업데이트 예정)")
 uploaded_file = st.file_uploader("JPG, PNG 등 이미지를 업로드하세요", type=["jpg", "jpeg", "png"])
 
@@ -492,13 +331,10 @@ if current_text != st.session_state.last_processed_text:
     st.session_state.clicked_word = None
     st.session_state.word_info = {}
     st.session_state.current_search_query = ""
-    st.session_state.tts_audio = None
-    st.session_state.tts_text_key = ""
-    # 텍스트 변경 시 TTS 미리보기 텍스트도 업데이트
-    st.session_state.prepared_tts_text = prepare_tts_text(current_text)
+    # TTS 관련 세션 상태 업데이트 제거
 
 
-# --- 7.2. 단어 검색창 및 로직 ---
+# --- 6.2. 단어 검색창 및 로직 ---
 st.divider()
 st.subheader("🔍 단어/구 검색") 
 manual_input = st.text_input("단어 또는 구를 입력하고 Enter (예: 'идёт по улице')", key="current_search_query")
@@ -526,7 +362,7 @@ if manual_input and manual_input != st.session_state.get("last_processed_query")
 st.markdown("---") 
 
 
-# ---------------------- 8. 텍스트 하이라이팅 및 상세 정보 레이아웃 ----------------------
+# ---------------------- 7. 텍스트 하이라이팅 및 상세 정보 레이아웃 ----------------------
 
 left, right = st.columns([2, 1])
 
@@ -538,31 +374,23 @@ with left:
     col_tts, col_accent = st.columns([1, 2])
     
     with col_tts:
-        if st.button("▶️ 텍스트 음성 듣기 (TTS)", key="tts_button"):
-            # 준비된 텍스트를 fetch_tts_audio에 전달
-            tts_result = fetch_tts_audio(st.session_state.prepared_tts_text) 
-            
-            if isinstance(tts_result, bytes):
-                st.session_state.tts_audio = tts_result
-                st.session_state.tts_text_key = current_text
-                st.rerun() # 오디오 플레이어 즉시 표시를 위해 재실행
-            else:
-                st.error(tts_result)
+        ELEVENLABS_URL = "https://elevenlabs.io/"
+        # 🌟 ElevenLabs 링크로 변경 (순수 Markdown 하이퍼링크)
+        st.markdown(
+            f"[▶️ 텍스트 음성 듣기 (ElevenLabs)]({ELEVENLABS_URL})",
+            unsafe_allow_html=False 
+        )
 
     with col_accent:
-        ACCENT_ONLINE_URL = "https://russiangram.com/"
+        ACCENT_ONLINE_URL = "[https://russiangram.com/](https://russiangram.com/)"
         
         # 🌟 순수 Markdown 하이퍼링크로 변경
         st.markdown(
             f"🔊 [강세 표시 사이트로 이동 (russiangram.com)]({ACCENT_ONLINE_URL})",
-            unsafe_allow_html=False # Markdown 링크이므로 안전함
+            unsafe_allow_html=False
         )
+        st.info("⬆️ 음성 듣기 및 강세 확인을 위해 외부 사이트 링크를 사용합니다. 새 탭으로 열립니다.")
 
-
-    # 오디오 플레이어 표시 (TTS 버튼 클릭 후 오디오 데이터가 있고 텍스트가 일치할 때만)
-    if 'tts_audio' in st.session_state and st.session_state.tts_audio and st.session_state.tts_text_key == current_text:
-        st.audio(st.session_state.tts_audio, format='audio/wav', key='audio_playback')
-        
 
     # 러시아어 텍스트 하이라이팅 출력 (current_text 사용)
     ru_html = get_highlighted_html(current_text, st.session_state.selected_words)
@@ -581,15 +409,13 @@ with left:
         st.session_state.ocr_output_text = ""
         st.session_state.translated_text = ""
         st.session_state.last_processed_text = ""
-        st.session_state.tts_audio = None
-        st.session_state.tts_text_key = ""
-        st.session_state.prepared_tts_text = prepare_tts_text(DEFAULT_TEST_TEXT)
+        # TTS 관련 세션 상태 초기화 제거
 
 
     st.button("🔄 선택 및 검색 초기화", key="reset_button", on_click=reset_all_state)
     
 
-# --- 8.2. 단어 상세 정보 (right 컬럼) + 검색 링크 추가 ---
+# --- 7.2. 단어 상세 정보 (right 컬럼) + 검색 링크 추가 ---
 with right:
     st.subheader("단어 상세 정보")
     
@@ -663,7 +489,7 @@ with right:
         st.info("검색창에 단어를 입력하면 여기에 상세 정보가 표시됩니다.")
 
 
-# ---------------------- 9. 하단: 누적 목록 + CSV ----------------------
+# ---------------------- 8. 하단: 누적 목록 + CSV ----------------------
 st.divider()
 st.subheader("📝 선택 단어 목록 (기본형 기준)") 
 
@@ -702,7 +528,7 @@ if word_info:
         st.info("선택된 단어의 정보가 로드 중이거나, 표시할 정보가 없습니다.")
 
 
-# ---------------------- 10. 하단: 한국어 번역본 (가장 아래에 위치) ----------------------
+# ---------------------- 9. 하단: 한국어 번역본 (가장 아래에 위치) ----------------------
 st.divider()
 st.subheader("한국어 번역본") 
 
@@ -722,7 +548,7 @@ elif translated_text.startswith("번역 오류 발생"):
 else:
     st.markdown(f'<div class="text-container" style="color: #333; font-weight: 500;">{translated_text}</div>', unsafe_allow_html=True)
 
-# ---------------------- 11. 저작권 표시 (페이지 최하단) ----------------------
+# ---------------------- 10. 저작권 표시 (페이지 최하단) ----------------------
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; font-size: 0.75em; color: #888;">

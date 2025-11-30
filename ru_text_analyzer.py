@@ -550,16 +550,22 @@ with left:
                 st.error(tts_result)
 
     with col_accent:
-        ACCENT_ONLINE_URL = "[https://russiangram.com/](https://russiangram.com/)" # 🌟 Markdown 중첩 제거, 순수 URL로 수정
-        # 🌟 st.link_button 대신 st.markdown을 사용하여 HTML <a> 태그로 대체
+        ACCENT_ONLINE_URL = "[https://russiangram.com/](https://russiangram.com/)" 
+        
+        # 🌟 JavaScript를 직접 사용하여 새 탭 열기
+        # 이 HTML/JS 조합은 Streamlit의 경로 재작성을 우회하는 가장 확실한 방법입니다.
+        js_code = f"window.open('{ACCENT_ONLINE_URL}', '_blank');"
+        
         st.markdown(
-            f'<a href="{ACCENT_ONLINE_URL}" target="_blank" style="text-decoration: none; display: inline-block;">'
-            f'<button style="background-color: #f0f2f6; color: #333; border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.3rem 0.5rem; margin: 0;">'
-            f'🔊 강세 표시 사이트로 이동 (russiangram.com)'
-            f'</button></a>',
+            f"""
+            <button onclick="{js_code}" 
+                    style="background-color: #f0f2f6; color: #333; border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.3rem 0.5rem; margin: 0; cursor: pointer;">
+                🔊 강세 표시 사이트로 이동 (russiangram.com)
+            </button>
+            """,
             unsafe_allow_html=True
         )
-        st.info("⬆️ 강세 확인을 위해 새 탭으로 russiangram.com이 열립니다. (팝업이 아닌 HTML 링크로 변경)")
+        st.info("⬆️ 강세 확인을 위해 새 탭으로 russiangram.com이 열립니다. (JavaScript 호출로 변경)")
 
 
     # 오디오 플레이어 표시 (TTS 버튼 클릭 후 오디오 데이터가 있고 텍스트가 일치할 때만)
@@ -642,31 +648,38 @@ with right:
                 else:
                     st.info("예문 정보가 없습니다.")
             
-            # --- 외부 검색 링크 수정 ---
+            # --- 외부 검색 링크 수정 (JavaScript 방식 적용) ---
             encoded_query = urllib.parse.quote(clean_token)
             
-            # 🌟 URL 변수에서 마크다운 기호를 모두 제거하고 순수 URL만 남김
             multitran_url = f"[https://www.multitran.com/m.exe?s=](https://www.multitran.com/m.exe?s=){encoded_query}&l1=1&l2=2" 
             corpus_url = f"[http://search.ruscorpora.ru/search.xml?text=](http://search.ruscorpora.ru/search.xml?text=){encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1" 
             
             st.markdown("#### 🌐 외부 검색")
             col1, col2 = st.columns(2)
-            # 🌟 Multitran 링크도 HTML <a> 태그로 대체
+            
+            # Multitran 링크 (JavaScript)
             with col1:
+                js_multitran = f"window.open('{multitran_url}', '_blank');"
                 st.markdown(
-                    f'<a href="{multitran_url}" target="_blank" style="text-decoration: none; display: inline-block;">'
-                    f'<button style="background-color: #f0f2f6; color: #333; border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.3rem 0.5rem; margin: 0;">'
-                    f'📚 Multitran 검색'
-                    f'</button></a>',
+                    f"""
+                    <button onclick="{js_multitran}" 
+                            style="background-color: #f0f2f6; color: #333; border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.3rem 0.5rem; margin: 0; cursor: pointer;">
+                        📚 Multitran 검색
+                    </button>
+                    """,
                     unsafe_allow_html=True
                 )
-            # 🌟 국립 코퍼스 링크도 HTML <a> 태그로 대체
+            
+            # 국립 코퍼스 링크 (JavaScript)
             with col2:
+                js_corpus = f"window.open('{corpus_url}', '_blank');"
                 st.markdown(
-                    f'<a href="{corpus_url}" target="_blank" style="text-decoration: none; display: inline-block;">'
-                    f'<button style="background-color: #f0f2f6; color: #333; border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.3rem 0.5rem; margin: 0;">'
-                    f'📖 국립 코퍼스 검색'
-                    f'</button></a>',
+                    f"""
+                    <button onclick="{js_corpus}" 
+                            style="background-color: #f0f2f6; color: #333; border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.3rem 0.5rem; margin: 0; cursor: pointer;">
+                        📖 국립 코퍼스 검색
+                    </button>
+                    """,
                     unsafe_allow_html=True
                 )
             

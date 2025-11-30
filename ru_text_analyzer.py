@@ -11,6 +11,7 @@ import urllib.parse
 import struct # WAV 헤더 생성을 위해 추가
 from base64 import b64decode # Base64 디코딩을 위해 추가
 from typing import Union # Python 버전 호환성을 위해 추가
+import time # 재시도 지연을 위해 추가
 
 # ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
 
@@ -205,7 +206,6 @@ def fetch_from_gemini(word, lemma, pos):
 
 # ---------------------- 2. TTS 함수 (신규) ----------------------
 
-# @st.cache_data(show_spinner="음성 파일 생성 중...") # CACHE DECORATOR REMOVED
 def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
     client = get_gemini_client()
     if not client:
@@ -213,7 +213,8 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
     
     # 사용할 음성 설정 (Kore는 맑고 단단한 목소리)
     TTS_VOICE = "Kore" 
-
+    MAX_RETRIES = 3 # 최대 재시도 횟수
+    
     # 텍스트 정리 및 길이 제한 (모델 오류 방지)
     # 1. 특수 문자 제거 (러시아어 알파벳, 숫자, 공백, 기본 구두점만 남김)
     clean_text = re.sub(r'[^а-яА-ЯёЁa-zA-Z0-9\s.,;?!:\-—()«»]', '', russian_text) 
@@ -242,44 +243,61 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
         },
     }
 
-    try:
-        response = client.models.generate_content(
-            model="gemini-2.5-flash-preview-tts", 
-            contents=payload['contents'],
-            config=payload['generationConfig']
-        )
+    # API 호출 및 재시도 로직
+    for attempt in range(MAX_RETRIES):
+        try:
+            with st.spinner(f"음성 파일 생성 중... (시도 {attempt + 1}/{MAX_RETRIES})"):
+                response = client.models.generate_content(
+                    model="gemini-2.5-flash-preview-tts", 
+                    contents=payload['contents'],
+                    config=payload['generationConfig']
+                )
 
-        # 응답이 유효한지 1차 확인
-        if not response.candidates or not response.candidates[0].content.parts:
-            return "TTS API 오류: 유효한 응답 구조를 받지 못했습니다. (후보 또는 파트 누락)"
+            # 응답 유효성 검사
+            if not response.candidates or not response.candidates[0].content.parts:
+                if attempt < MAX_RETRIES - 1:
+                    time.sleep(2 ** attempt) # 지수 백오프
+                    continue
+                return "TTS API 오류: 유효한 응답 구조를 받지 못했습니다. (후보 또는 파트 누락)"
 
-        audio_part = response.candidates[0].content.parts[0]
-        
-        # 'Part' object has no attribute 'inlineData' 또는 데이터 누락 처리를 위한 안전 장치 강화
-        if not hasattr(audio_part, 'inlineData') or not audio_part.inlineData or not audio_part.inlineData.data:
-            # TTS API가 오디오를 생성하는 대신 텍스트 응답을 반환했는지 확인 (예: 오류 메시지)
+            audio_part = response.candidates[0].content.parts[0]
+            
+            # 오디오 데이터 존재 여부 검사
+            if hasattr(audio_part, 'inlineData') and audio_part.inlineData and audio_part.inlineData.data:
+                # 성공적으로 데이터 획득
+                base64_data = audio_part.inlineData.data
+                mime_type_full = audio_part.inlineData.mimeType
+                
+                # 샘플 레이트 추출 (기본 24000Hz)
+                rate_match = re.search(r'rate=(\d+)', mime_type_full)
+                sample_rate = int(rate_match.group(1)) if rate_match else 24000 
+
+                # Base64 디코딩 및 WAV 변환
+                pcm_data = b64decode(base64_data)
+                wav_bytes = pcm_to_wav(pcm_data, sample_rate)
+                
+                return wav_bytes # 성공 시 함수 종료
+
+            # 오디오 데이터가 누락되었으나 재시도 횟수가 남았을 경우
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(2 ** attempt) # 지수 백오프
+                continue
+            
+            # 모든 재시도 실패 후 최종 오류 메시지 반환
             if hasattr(audio_part, 'text') and audio_part.text:
                  return f"TTS API 오류: 오디오 데이터 누락. 대신 텍스트 응답을 받았습니다: '{audio_part.text[:100]}...'"
             
             return "TTS API 오류: 음성 데이터(inlineData.data)가 응답에 포함되지 않았습니다. 텍스트 내용이나 API 상태를 확인하세요."
 
-        base64_data = audio_part.inlineData.data
-        mime_type_full = audio_part.inlineData.mimeType
-        
-        # 샘플 레이트 추출 (기본 24000Hz)
-        # import re # <-- REMOVED THIS REDUNDANT INTERNAL IMPORT (This line was the primary cause of scoping confusion)
-        rate_match = re.search(r'rate=(\d+)', mime_type_full)
-        sample_rate = int(rate_match.group(1)) if rate_match else 24000 
-
-        # Base64 디코딩 및 WAV 변환
-        pcm_data = b64decode(base64_data)
-        wav_bytes = pcm_to_wav(pcm_data, sample_rate)
-        
-        return wav_bytes
-
-    except Exception as e:
-        # 기타 API 호출 또는 파이썬 처리 중 발생하는 오류를 명확히 출력
-        return f"TTS 처리 중 예외 발생: {e}"
+        except Exception as e:
+            if attempt < MAX_RETRIES - 1:
+                time.sleep(2 ** attempt) # 지수 백오프
+                continue
+            # 모든 재시도 실패 후 최종 예외 메시지 반환
+            return f"TTS 처리 중 예외 발생: {e}"
+    
+    # for 루프가 끝났으나 (도달할 수 없지만 방어적으로 추가)
+    return "TTS API 오류: 최대 재시도 횟수 초과"
 
 
 # ---------------------- 3. 텍스트 번역 함수 (기존) ----------------------

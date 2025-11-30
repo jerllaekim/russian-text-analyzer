@@ -267,7 +267,7 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
         mime_type_full = audio_part.inlineData.mimeType
         
         # 샘플 레이트 추출 (기본 24000Hz)
-        import re
+        # import re # <-- REMOVED THIS REDUNDANT INTERNAL IMPORT (This line was the primary cause of scoping confusion)
         rate_match = re.search(r'rate=(\d+)', mime_type_full)
         sample_rate = int(rate_match.group(1)) if rate_match else 24000 
 

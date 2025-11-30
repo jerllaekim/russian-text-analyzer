@@ -204,8 +204,9 @@ def fetch_from_gemini(word, lemma, pos):
         return {"ko_meanings": ["JSON 파싱 오류"], "examples": []}
 
 
-# ---------------------- 2. TTS 함수 (신규) ----------------------
+# ---------------------- 2. TTS 함수 (신규, 캐싱 및 재시도 로직 강화) ----------------------
 
+@st.cache_data(show_spinner="음성 파일 생성 중...") # 캐싱 재활성화
 def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
     client = get_gemini_client()
     if not client:
@@ -216,21 +217,16 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
     MAX_RETRIES = 3 # 최대 재시도 횟수
     
     # 텍스트 정리 및 길이 제한 (모델 오류 방지)
-    # 1. 특수 문자 제거 (러시아어 알파벳, 숫자, 공백, 기본 구두점만 남김)
     clean_text = re.sub(r'[^а-яА-ЯёЁa-zA-Z0-9\s.,;?!:\-—()«»]', '', russian_text) 
-    # 2. 여러 줄바꿈/공백을 단일 공백으로 치환
     clean_text = re.sub(r'\s+', ' ', clean_text).strip()
 
-    # 텍스트 길이 제한 (TTS API 효율 및 비용 고려)
     if len(clean_text) > 500:
         clean_text = clean_text[:500] + "..."
     
-    # 간결한 프롬프트: 텍스트 자체만 전달
     TTS_PROMPT = clean_text 
 
     payload = {
         "contents": [{
-            # 모델이 텍스트로 인식하도록 프롬프트를 텍스트 파트로 전달
             "parts": [{"text": TTS_PROMPT}] 
         }],
         "generationConfig": {
@@ -246,17 +242,17 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
     # API 호출 및 재시도 로직
     for attempt in range(MAX_RETRIES):
         try:
-            with st.spinner(f"음성 파일 생성 중... (시도 {attempt + 1}/{MAX_RETRIES})"):
-                response = client.models.generate_content(
-                    model="gemini-2.5-flash-preview-tts", 
-                    contents=payload['contents'],
-                    config=payload['generationConfig']
-                )
+            # Spinner는 @st.cache_data 데코레이터가 처리
+            response = client.models.generate_content(
+                model="gemini-2.5-flash-preview-tts", 
+                contents=payload['contents'],
+                config=payload['generationConfig']
+            )
 
             # 응답 유효성 검사
             if not response.candidates or not response.candidates[0].content.parts:
                 if attempt < MAX_RETRIES - 1:
-                    time.sleep(2 ** attempt) # 지수 백오프
+                    time.sleep(2 ** attempt)
                     continue
                 return "TTS API 오류: 유효한 응답 구조를 받지 못했습니다. (후보 또는 파트 누락)"
 
@@ -280,7 +276,7 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
 
             # 오디오 데이터가 누락되었으나 재시도 횟수가 남았을 경우
             if attempt < MAX_RETRIES - 1:
-                time.sleep(2 ** attempt) # 지수 백오프
+                time.sleep(2 ** attempt)
                 continue
             
             # 모든 재시도 실패 후 최종 오류 메시지 반환
@@ -291,12 +287,11 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
 
         except Exception as e:
             if attempt < MAX_RETRIES - 1:
-                time.sleep(2 ** attempt) # 지수 백오프
+                time.sleep(2 ** attempt)
                 continue
             # 모든 재시도 실패 후 최종 예외 메시지 반환
             return f"TTS 처리 중 예외 발생: {e}"
     
-    # for 루프가 끝났으나 (도달할 수 없지만 방어적으로 추가)
     return "TTS API 오류: 최대 재시도 횟수 초과"
 
 

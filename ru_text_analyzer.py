@@ -551,12 +551,15 @@ with left:
 
     with col_accent:
         ACCENT_ONLINE_URL = "[https://russiangram.com/](https://russiangram.com/)"
-        st.link_button(
-            "🔊 강세 표시 사이트로 이동 (russiangram.com)", 
-            url=ACCENT_ONLINE_URL, 
-            help="새 탭으로 russiangram.com이 열립니다. 텍스트를 복사하여 붙여넣어 강세를 확인하세요."
+        # 🌟 st.link_button 대신 st.markdown을 사용하여 HTML <a> 태그로 대체
+        st.markdown(
+            f'<a href="{ACCENT_ONLINE_URL}" target="_blank" style="text-decoration: none; display: inline-block;">'
+            f'<button style="background-color: #f0f2f6; color: #333; border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.3rem 0.5rem; margin: 0;">'
+            f'🔊 강세 표시 사이트로 이동 (russiangram.com)'
+            f'</button></a>',
+            unsafe_allow_html=True
         )
-        st.info("⬆️ 강세 확인을 위해 새 탭으로 russiangram.com이 열립니다. TTS 버튼으로 음성도 들을 수 있습니다.")
+        st.info("⬆️ 강세 확인을 위해 새 탭으로 russiangram.com이 열립니다. (팝업이 아닌 HTML 링크로 변경)")
 
 
     # 오디오 플레이어 표시 (TTS 버튼 클릭 후 오디오 데이터가 있고 텍스트가 일치할 때만)
@@ -647,10 +650,24 @@ with right:
             
             st.markdown("#### 🌐 외부 검색")
             col1, col2 = st.columns(2)
+            # 🌟 Multitran 링크도 HTML <a> 태그로 대체
             with col1:
-                st.link_button("📚 Multitran 검색", url=multitran_url)
+                st.markdown(
+                    f'<a href="{multitran_url}" target="_blank" style="text-decoration: none; display: inline-block;">'
+                    f'<button style="background-color: #f0f2f6; color: #333; border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.3rem 0.5rem; margin: 0;">'
+                    f'📚 Multitran 검색'
+                    f'</button></a>',
+                    unsafe_allow_html=True
+                )
+            # 🌟 국립 코퍼스 링크도 HTML <a> 태그로 대체
             with col2:
-                st.link_button("📖 국립 코퍼스 검색", url=corpus_url)
+                st.markdown(
+                    f'<a href="{corpus_url}" target="_blank" style="text-decoration: none; display: inline-block;">'
+                    f'<button style="background-color: #f0f2f6; color: #333; border: 1px solid #ccc; border-radius: 0.5rem; padding: 0.3rem 0.5rem; margin: 0;">'
+                    f'📖 국립 코퍼스 검색'
+                    f'</button></a>',
+                    unsafe_allow_html=True
+                )
             
         else:
             st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")

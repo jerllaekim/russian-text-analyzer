@@ -205,7 +205,7 @@ def fetch_from_gemini(word, lemma, pos):
 
 # ---------------------- 2. TTS 함수 (신규) ----------------------
 
-@st.cache_data(show_spinner="음성 파일 생성 중...")
+# @st.cache_data(show_spinner="음성 파일 생성 중...") # CACHE DECORATOR REMOVED
 def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
     client = get_gemini_client()
     if not client:
@@ -216,7 +216,7 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
 
     # 텍스트 정리 및 길이 제한 (모델 오류 방지)
     # 1. 특수 문자 제거 (러시아어 알파벳, 숫자, 공백, 기본 구두점만 남김)
-    clean_text = re.sub(r'[^а-яА-ЯёЁa-zA-Z0-9\s.,;?!:\-—()«»]', '', russian_text)
+    clean_text = re.sub(r'[^а-яА-ЯёЁa-zA-Z0-9\s.,;?!:\-—()«»]', '', russian_text) 
     # 2. 여러 줄바꿈/공백을 단일 공백으로 치환
     clean_text = re.sub(r'\s+', ' ', clean_text).strip()
 

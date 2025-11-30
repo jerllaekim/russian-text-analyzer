@@ -569,10 +569,6 @@ with left:
     st.markdown(ru_html, unsafe_allow_html=True)
     
     st.markdown("---")
-    # 🌟 TTS API에 전달되는 텍스트를 사용자에게 명확하게 표시
-    st.markdown("#### TTS 모델에 전달되는 최종 텍스트 미리보기")
-    st.code(st.session_state.prepared_tts_text, language='text')
-    st.markdown("---")
 
 
     # 초기화 버튼

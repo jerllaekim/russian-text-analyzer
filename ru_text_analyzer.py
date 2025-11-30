@@ -550,7 +550,7 @@ with left:
                 st.error(tts_result)
 
     with col_accent:
-        ACCENT_ONLINE_URL = "[https://russiangram.com/](https://russiangram.com/)" # 🌟 Markdown 중첩 제거, 순수 URL
+        ACCENT_ONLINE_URL = "[https://russiangram.com/](https://russiangram.com/)" # 🌟 Markdown 중첩 제거, 순수 URL로 수정
         # 🌟 st.link_button 대신 st.markdown을 사용하여 HTML <a> 태그로 대체
         st.markdown(
             f'<a href="{ACCENT_ONLINE_URL}" target="_blank" style="text-decoration: none; display: inline-block;">'
@@ -642,10 +642,10 @@ with right:
                 else:
                     st.info("예문 정보가 없습니다.")
             
-            # --- 외부 검색 링크 추가 ---
+            # --- 외부 검색 링크 수정 ---
             encoded_query = urllib.parse.quote(clean_token)
             
-            # 🌟 URL 변수에 순수 URL 할당
+            # 🌟 URL 변수에서 마크다운 기호를 모두 제거하고 순수 URL만 남김
             multitran_url = f"[https://www.multitran.com/m.exe?s=](https://www.multitran.com/m.exe?s=){encoded_query}&l1=1&l2=2" 
             corpus_url = f"[http://search.ruscorpora.ru/search.xml?text=](http://search.ruscorpora.ru/search.xml?text=){encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1" 
             

@@ -215,7 +215,9 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
     # 사용할 음성 설정 (Kore는 맑고 단단한 목소리)
     TTS_VOICE = "Kore" 
     MAX_RETRIES = 3 # 최대 재시도 횟수
-    TTS_MAX_CHARS = 150 # TTS 모델이 안정적으로 처리할 수 있는 최대 글자 수 (약 150~200자로 제한)
+    
+    # 🌟 길이 제한 150 -> 300으로 증가 (사용자 요청 반영)
+    TTS_MAX_CHARS = 300 
 
     # 1. 텍스트 정리 및 분할 (모델 오류 방지)
     clean_text = re.sub(r'[^а-яА-ЯёЁa-zA-Z0-9\s.,;?!:\-—()«»]', '', russian_text) 
@@ -224,26 +226,28 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
     if not clean_text:
         return "TTS 오류: 입력된 텍스트에 유효한 문자가 없습니다."
 
-    # 2. 문장 단위로 텍스트 자르기 (150자 제한)
+    # 2. 문장 단위로 텍스트 자르기 (300자 제한)
     final_text_to_process = clean_text
     
     if len(clean_text) > TTS_MAX_CHARS:
-        # 문장 종결 기호(., ?, !)를 찾아 텍스트를 자름
-        # 150자 근처(150~200자)에서 가장 가까운 종결 기호를 찾습니다.
         search_range = clean_text[:TTS_MAX_CHARS + 50] 
         sentence_endings = re.findall(r'([.?!])', search_range)
         
         if sentence_endings:
             last_ending_char = sentence_endings[-1]
             last_ending_index = search_range.rfind(last_ending_char)
+            # 마지막 종결 기호까지의 텍스트를 사용
             final_text_to_process = clean_text[:last_ending_index + 1]
         else:
-            # 종결 기호가 없으면 그냥 150자에서 자르고 ... 추가
+            # 종결 기호가 없으면 그냥 300자에서 자르고 ... 추가
             final_text_to_process = clean_text[:TTS_MAX_CHARS] + "..."
+    
+    # 텍스트가 너무 짧거나(공백만 있던 경우) 공백으로 처리될 경우 방어
+    if not final_text_to_process.strip():
+        return "TTS 오류: 처리할 수 있는 유효한 텍스트 부분이 없습니다."
 
     TTS_PROMPT = final_text_to_process 
-    if not TTS_PROMPT:
-         return "TTS 오류: 처리할 수 있는 유효한 텍스트 부분이 없습니다."
+    
 
     payload = {
         "contents": [{
@@ -253,6 +257,7 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
             "responseModalities": ["AUDIO"],
             "speechConfig": {
                 "voiceConfig": {
+                    # 명시적으로 voiceName을 설정하여 안정성 확보
                     "prebuiltVoiceConfig": {"voiceName": TTS_VOICE}
                 }
             }
@@ -304,7 +309,8 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
                  # API에서 텍스트 응답을 받은 경우, TTS 실패 메시지와 함께 반환
                  return f"TTS API 오류: 오디오 데이터 누락. 텍스트 응답: '{audio_part.text[:50]}...'"
             
-            return "TTS API 오류: 음성 데이터(inlineData.data)가 응답에 포함되지 않았습니다. 텍스트 내용이나 API 상태를 확인하세요."
+            # 🌟 전달된 텍스트를 포함하여 오류 메시지 출력 (투명성 확보)
+            return f"TTS API 오류: 음성 데이터(inlineData.data)가 응답에 포함되지 않았습니다. API에 전달된 텍스트: '{TTS_PROMPT[:150]}...'"
 
         except Exception as e:
             if attempt < MAX_RETRIES - 1:

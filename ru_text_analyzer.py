@@ -214,15 +214,23 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
     # 사용할 음성 설정 (Kore는 맑고 단단한 목소리)
     TTS_VOICE = "Kore" 
 
+    # 텍스트 정리 및 길이 제한 (모델 오류 방지)
+    # 1. 특수 문자 제거 (러시아어 알파벳, 숫자, 공백, 기본 구두점만 남김)
+    clean_text = re.sub(r'[^а-яА-ЯёЁa-zA-Z0-9\s.,;?!:\-—()«»]', '', russian_text)
+    # 2. 여러 줄바꿈/공백을 단일 공백으로 치환
+    clean_text = re.sub(r'\s+', ' ', clean_text).strip()
+
     # 텍스트 길이 제한 (TTS API 효율 및 비용 고려)
-    if len(russian_text) > 500:
-        russian_text = russian_text[:500] + "..."
+    if len(clean_text) > 500:
+        clean_text = clean_text[:500] + "..."
     
-    TTS_PROMPT = f"Say the following Russian text clearly and professionally:\n\n{russian_text}"
+    # 간결한 프롬프트: 텍스트 자체만 전달
+    TTS_PROMPT = clean_text 
 
     payload = {
         "contents": [{
-            "parts": [{"text": TTS_PROMPT}]
+            # 모델이 텍스트로 인식하도록 프롬프트를 텍스트 파트로 전달
+            "parts": [{"text": TTS_PROMPT}] 
         }],
         "generationConfig": {
             "responseModalities": ["AUDIO"],
@@ -249,6 +257,10 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
         
         # 'Part' object has no attribute 'inlineData' 또는 데이터 누락 처리를 위한 안전 장치 강화
         if not hasattr(audio_part, 'inlineData') or not audio_part.inlineData or not audio_part.inlineData.data:
+            # TTS API가 오디오를 생성하는 대신 텍스트 응답을 반환했는지 확인 (예: 오류 메시지)
+            if hasattr(audio_part, 'text') and audio_part.text:
+                 return f"TTS API 오류: 오디오 데이터 누락. 대신 텍스트 응답을 받았습니다: '{audio_part.text[:100]}...'"
+            
             return "TTS API 오류: 음성 데이터(inlineData.data)가 응답에 포함되지 않았습니다. 텍스트 내용이나 API 상태를 확인하세요."
 
         base64_data = audio_part.inlineData.data

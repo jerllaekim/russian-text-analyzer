@@ -241,13 +241,15 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
             config=payload['generationConfig']
         )
 
+        # 응답이 유효한지 1차 확인
+        if not response.candidates or not response.candidates[0].content.parts:
+            return "TTS API 오류: 유효한 응답 구조를 받지 못했습니다. (후보 또는 파트 누락)"
+
         audio_part = response.candidates[0].content.parts[0]
         
-        # TTS API 오류: 'Part' object has no attribute 'inlineData' 처리를 위한 안전 장치 추가
-        # SDK 버전/환경에 따라 inlineData가 없을 수 있으므로 hasattr을 사용해 체크
-        if not hasattr(audio_part, 'inlineData'):
-            # API 호출은 성공했지만, 오디오 데이터가 응답에 포함되지 않았음을 의미
-            return "TTS API 오류: 응답 구조에 오디오 데이터가 포함되지 않았습니다. (API 설정 또는 텍스트 내용 확인 필요)"
+        # 'Part' object has no attribute 'inlineData' 또는 데이터 누락 처리를 위한 안전 장치 강화
+        if not hasattr(audio_part, 'inlineData') or not audio_part.inlineData or not audio_part.inlineData.data:
+            return "TTS API 오류: 음성 데이터(inlineData.data)가 응답에 포함되지 않았습니다. 텍스트 내용이나 API 상태를 확인하세요."
 
         base64_data = audio_part.inlineData.data
         mime_type_full = audio_part.inlineData.mimeType
@@ -264,7 +266,8 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
         return wav_bytes
 
     except Exception as e:
-        return f"TTS API 오류 발생: {e}"
+        # 기타 API 호출 또는 파이썬 처리 중 발생하는 오류를 명확히 출력
+        return f"TTS 처리 중 예외 발생: {e}"
 
 
 # ---------------------- 3. 텍스트 번역 함수 (기존) ----------------------

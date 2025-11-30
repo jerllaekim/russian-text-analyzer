@@ -51,6 +51,8 @@ if "tts_audio" not in st.session_state: # TTS 오디오 저장
     st.session_state.tts_audio = None
 if "tts_text_key" not in st.session_state: # TTS 오디오와 텍스트 일치 확인용
     st.session_state.tts_text_key = ""
+if "prepared_tts_text" not in st.session_state: # TTS API에 전달될 텍스트 미리보기용
+    st.session_state.prepared_tts_text = ""
 
 
 mystem = Mystem()
@@ -203,34 +205,25 @@ def fetch_from_gemini(word, lemma, pos):
     except json.JSONDecodeError:
         return {"ko_meanings": ["JSON 파싱 오류"], "examples": []}
 
+# ---------------------- TTS 텍스트 준비 함수 (신규) ----------------------
 
-# ---------------------- 2. TTS 함수 (신규, 캐싱 및 재시도 로직 강화) ----------------------
-
-@st.cache_data(show_spinner="음성 파일 생성 중...") # 캐싱 재활성화
-def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
-    client = get_gemini_client()
-    if not client:
-        return "Gemini API 키가 설정되지 않아 TTS를 수행할 수 없습니다."
+@st.cache_data(show_spinner=False)
+def prepare_tts_text(russian_text: str, max_chars: int = 300) -> str:
+    """TTS API에 전달하기 위해 텍스트를 정제하고 분할합니다."""
     
-    # 사용할 음성 설정 (Kore는 맑고 단단한 목소리)
-    TTS_VOICE = "Kore" 
-    MAX_RETRIES = 3 # 최대 재시도 횟수
-    
-    # 🌟 길이 제한 150 -> 300으로 증가 (사용자 요청 반영)
-    TTS_MAX_CHARS = 300 
-
-    # 1. 텍스트 정리 및 분할 (모델 오류 방지)
+    # 1. 텍스트 정리
+    # 러시아어/영어 알파벳, 숫자, 기본적인 구두점 외 제거
     clean_text = re.sub(r'[^а-яА-ЯёЁa-zA-Z0-9\s.,;?!:\-—()«»]', '', russian_text) 
     clean_text = re.sub(r'\s+', ' ', clean_text).strip()
 
     if not clean_text:
-        return "TTS 오류: 입력된 텍스트에 유효한 문자가 없습니다."
+        return "TTS 오류: 유효한 문자가 없어 처리할 수 없습니다."
 
-    # 2. 문장 단위로 텍스트 자르기 (300자 제한)
+    # 2. 문장 단위로 텍스트 자르기 (max_chars 제한)
     final_text_to_process = clean_text
     
-    if len(clean_text) > TTS_MAX_CHARS:
-        search_range = clean_text[:TTS_MAX_CHARS + 50] 
+    if len(clean_text) > max_chars:
+        search_range = clean_text[:max_chars + 50] 
         sentence_endings = re.findall(r'([.?!])', search_range)
         
         if sentence_endings:
@@ -239,25 +232,38 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
             # 마지막 종결 기호까지의 텍스트를 사용
             final_text_to_process = clean_text[:last_ending_index + 1]
         else:
-            # 종결 기호가 없으면 그냥 300자에서 자르고 ... 추가
-            final_text_to_process = clean_text[:TTS_MAX_CHARS] + "..."
+            # 종결 기호가 없으면 그냥 max_chars에서 자르고 ... 추가
+            final_text_to_process = clean_text[:max_chars] + "..."
     
-    # 텍스트가 너무 짧거나(공백만 있던 경우) 공백으로 처리될 경우 방어
     if not final_text_to_process.strip():
         return "TTS 오류: 처리할 수 있는 유효한 텍스트 부분이 없습니다."
 
-    TTS_PROMPT = final_text_to_process 
+    return final_text_to_process
+
+
+# ---------------------- 2. TTS API 호출 함수 (재시도 로직 강화) ----------------------
+
+@st.cache_data(show_spinner="음성 파일 생성 중...") # 캐싱 재활성화
+def fetch_tts_audio(tts_prompt: str) -> Union[bytes, str]:
+    client = get_gemini_client()
+    if not client:
+        return "Gemini API 키가 설정되지 않아 TTS를 수행할 수 없습니다."
     
+    TTS_VOICE = "Kore" 
+    MAX_RETRIES = 3 
+
+    # tts_prompt는 이미 prepare_tts_text 함수를 통해 정제된 텍스트입니다.
+    if tts_prompt.startswith("TTS 오류:"):
+        return tts_prompt
 
     payload = {
         "contents": [{
-            "parts": [{"text": TTS_PROMPT}] 
+            "parts": [{"text": tts_prompt}] 
         }],
         "generationConfig": {
             "responseModalities": ["AUDIO"],
             "speechConfig": {
                 "voiceConfig": {
-                    # 명시적으로 voiceName을 설정하여 안정성 확보
                     "prebuiltVoiceConfig": {"voiceName": TTS_VOICE}
                 }
             }
@@ -267,14 +273,12 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
     # API 호출 및 재시도 로직
     for attempt in range(MAX_RETRIES):
         try:
-            # Spinner는 @st.cache_data 데코레이터가 처리
             response = client.models.generate_content(
                 model="gemini-2.5-flash-preview-tts", 
                 contents=payload['contents'],
                 config=payload['generationConfig']
             )
 
-            # 응답 유효성 검사
             if not response.candidates or not response.candidates[0].content.parts:
                 if attempt < MAX_RETRIES - 1:
                     time.sleep(2 ** attempt)
@@ -289,37 +293,32 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
                 base64_data = audio_part.inlineData.data
                 mime_type_full = audio_part.inlineData.mimeType
                 
-                # 샘플 레이트 추출 (기본 24000Hz)
                 rate_match = re.search(r'rate=(\d+)', mime_type_full)
                 sample_rate = int(rate_match.group(1)) if rate_match else 24000 
 
-                # Base64 디코딩 및 WAV 변환
                 pcm_data = b64decode(base64_data)
                 wav_bytes = pcm_to_wav(pcm_data, sample_rate)
                 
                 return wav_bytes # 성공 시 함수 종료
 
-            # 오디오 데이터가 누락되었으나 재시도 횟수가 남았을 경우
+            # 오디오 데이터 누락 재시도
             if attempt < MAX_RETRIES - 1:
                 time.sleep(2 ** attempt)
                 continue
             
-            # 모든 재시도 실패 후 최종 오류 메시지 반환
+            # 모든 재시도 실패 후 최종 오류 메시지 반환 (TTS_PROMPT 포함)
             if hasattr(audio_part, 'text') and audio_part.text:
-                 # API에서 텍스트 응답을 받은 경우, TTS 실패 메시지와 함께 반환
-                 return f"TTS API 오류: 오디오 데이터 누락. 텍스트 응답: '{audio_part.text[:50]}...'"
+                 return f"TTS API 오류: 오디오 데이터 누락. 텍스트 응답: '{audio_part.text[:50]}...' API에 전달된 텍스트: '{tts_prompt[:150]}...'"
             
-            # 🌟 전달된 텍스트를 포함하여 오류 메시지 출력 (투명성 확보)
-            return f"TTS API 오류: 음성 데이터(inlineData.data)가 응답에 포함되지 않았습니다. API에 전달된 텍스트: '{TTS_PROMPT[:150]}...'"
+            return f"TTS API 오류: 음성 데이터(inlineData.data)가 응답에 포함되지 않았습니다. API에 전달된 텍스트: '{tts_prompt[:150]}...'"
 
         except Exception as e:
             if attempt < MAX_RETRIES - 1:
                 time.sleep(2 ** attempt)
                 continue
-            # 모든 재시도 실패 후 최종 예외 메시지 반환
             return f"TTS 처리 중 예외 발생: {e}"
     
-    return "TTS API 오류: 최대 재시도 횟수 초과"
+    return f"TTS API 오류: 최대 재시도 횟수 초과. API에 전달된 텍스트: '{tts_prompt[:150]}...'"
 
 
 # ---------------------- 3. 텍스트 번역 함수 (기존) ----------------------
@@ -418,6 +417,7 @@ def load_default_text():
     st.session_state.last_processed_query = ""
     st.session_state.tts_audio = None # TTS 상태 초기화
     st.session_state.tts_text_key = "" # TTS 상태 초기화
+    st.session_state.prepared_tts_text = prepare_tts_text(NEW_DEFAULT_TEXT) # TTS 미리보기 초기화
 
 # 🌟 6. 하이라이팅 로직 함수 정의 
 def get_highlighted_html(text_to_process, highlight_words):
@@ -494,6 +494,9 @@ if current_text != st.session_state.last_processed_text:
     st.session_state.current_search_query = ""
     st.session_state.tts_audio = None
     st.session_state.tts_text_key = ""
+    # 텍스트 변경 시 TTS 미리보기 텍스트도 업데이트
+    st.session_state.prepared_tts_text = prepare_tts_text(current_text)
+
 
 # --- 7.2. 단어 검색창 및 로직 ---
 st.divider()
@@ -536,7 +539,8 @@ with left:
     
     with col_tts:
         if st.button("▶️ 텍스트 음성 듣기 (TTS)", key="tts_button"):
-            tts_result = fetch_tts_audio(current_text)
+            # 준비된 텍스트를 fetch_tts_audio에 전달
+            tts_result = fetch_tts_audio(st.session_state.prepared_tts_text) 
             
             if isinstance(tts_result, bytes):
                 st.session_state.tts_audio = tts_result
@@ -564,6 +568,13 @@ with left:
     ru_html = get_highlighted_html(current_text, st.session_state.selected_words)
     st.markdown(ru_html, unsafe_allow_html=True)
     
+    st.markdown("---")
+    # 🌟 TTS API에 전달되는 텍스트를 사용자에게 명확하게 표시
+    st.markdown("#### TTS 모델에 전달되는 최종 텍스트 미리보기")
+    st.code(st.session_state.prepared_tts_text, language='text')
+    st.markdown("---")
+
+
     # 초기화 버튼
     def reset_all_state():
         st.session_state.selected_words = []
@@ -576,9 +587,9 @@ with left:
         st.session_state.last_processed_text = ""
         st.session_state.tts_audio = None
         st.session_state.tts_text_key = ""
+        st.session_state.prepared_tts_text = prepare_tts_text(DEFAULT_TEST_TEXT)
 
 
-    st.markdown("---")
     st.button("🔄 선택 및 검색 초기화", key="reset_button", on_click=reset_all_state)
     
 

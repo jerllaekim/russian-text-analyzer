@@ -242,6 +242,13 @@ def fetch_tts_audio(russian_text: str) -> Union[bytes, str]:
         )
 
         audio_part = response.candidates[0].content.parts[0]
+        
+        # TTS API 오류: 'Part' object has no attribute 'inlineData' 처리를 위한 안전 장치 추가
+        # SDK 버전/환경에 따라 inlineData가 없을 수 있으므로 hasattr을 사용해 체크
+        if not hasattr(audio_part, 'inlineData'):
+            # API 호출은 성공했지만, 오디오 데이터가 응답에 포함되지 않았음을 의미
+            return "TTS API 오류: 응답 구조에 오디오 데이터가 포함되지 않았습니다. (API 설정 또는 텍스트 내용 확인 필요)"
+
         base64_data = audio_part.inlineData.data
         mime_type_full = audio_part.inlineData.mimeType
         

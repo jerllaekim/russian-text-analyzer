@@ -21,7 +21,21 @@ NEW_DEFAULT_TEXT = """Том живёт в Санкт-Петербурге уж�
 DEFAULT_TEST_TEXT = "Человек идёт по улице. Это тестовая строка. Хорошо. Я часто читаю эту книгу."
 
 
+# ---------------------- 0.1. 페이지 설정 및 배너 삽입 ----------------------
 st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
+
+# 🌟 배너 이미지를 가장 상단에 삽입
+# GitHub 저장소 루트 폴더에 'banner.png' 파일을 업로드해야 합니다.
+IMAGE_FILE_PATH = "banner.png" 
+
+try:
+    # 이미지가 없으면 오류가 날 수 있으므로 try-except로 처리
+    st.image(IMAGE_FILE_PATH, use_column_width=True)
+except FileNotFoundError:
+    # 이미지가 없을 경우, 사용자에게 안내
+    st.warning(f"배너 이미지 파일 ({IMAGE_FILE_PATH})을 찾을 수 없습니다. GitHub 저장소에 이미지를 업로드하고 파일명을 확인해주세요.")
+    st.markdown("###") # 제목과의 간격 확보
+
 st.title("러시아어 텍스트 분석기") 
 
 # --- 세션 상태 초기화 ---
@@ -235,6 +249,16 @@ st.markdown("""
     .stButton>button:hover {
         background-color: #e8e8e8;
         border-color: #aaa;
+    }
+    /* 이미지에 패딩이나 마진을 없애서 상단에 붙임 */
+    .main .stImage {
+        padding: 0;
+        margin: 0;
+    }
+    /* 제목의 기본 마진을 줄여 배너와 제목 사이 간격을 좁힘 */
+    .st-emotion-cache-1215r6w { /* Streamlit H1 heading container class */
+        margin-top: 0rem !important;
+        padding-top: 0rem !important;
     }
 </style>
 """, unsafe_allow_html=True)

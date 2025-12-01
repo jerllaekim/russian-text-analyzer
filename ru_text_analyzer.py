@@ -22,6 +22,7 @@ DEFAULT_TEST_TEXT = "Человек идёт по улице. Это тесто�
 
 
 # ---------------------- 0.1. 페이지 설정 및 배너 삽입 ----------------------
+st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
 
 # 🌟 배너 이미지를 가장 상단에 삽입
 # GitHub 저장소 루트 폴더에 'banner.png' 파일을 업로드해야 합니다.
@@ -35,7 +36,7 @@ except FileNotFoundError:
     st.warning(f"배너 이미지 파일 ({IMAGE_FILE_PATH})을 찾을 수 없습니다. GitHub 저장소에 이미지를 업로드하고 파일명을 확인해주세요.")
     st.markdown("###") # 제목과의 간격 확보
 
-st.title("러시아어 텍스트 분석기") 
+# st.title("러시아어 텍스트 분석기") # 🌟 제목 제거됨
 
 # --- 세션 상태 초기화 ---
 if "selected_words" not in st.session_state:

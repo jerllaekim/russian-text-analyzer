@@ -26,7 +26,7 @@ st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
 
 # 🌟 배너 이미지를 가장 상단에 삽입
 # GitHub 저장소 루트 폴더에 'banner.png' 파일을 업로드해야 합니다.
-IMAGE_FILE_PATH = "banner.png" 
+IMAGE_FILE_PATH = "banner (2).png" 
 
 try:
     # 이미지가 없으면 오류가 날 수 있으므로 try-except로 처리

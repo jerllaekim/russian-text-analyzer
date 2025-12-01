@@ -67,6 +67,10 @@ POS_MAP = {
     'S': '명사', 'V': '동사', 'A': '형용사', 'ADV': '부사', 'PR': '전치사',
     'CONJ': '접속사', 'INTJ': '감탄사', 'PART': '불변화사', 'NUM': '수사',
     'APRO': '대명사적 형용사', 'ANUM': '서수사', 'SPRO': '대명사',
+    # 🌟 Mystem 약어 추가: 동사형용사(PRICL), 비교급(COMP, A=cmp), 기타(ADVB)
+    'PRICL': '동사부사', 
+    'COMP': '비교급', 'A=cmp': '비교급 형용사', 'ADV=cmp': '비교급 부사',
+    'ADVB': '부사',
 }
 
 @st.cache_data(show_spinner=False)
@@ -86,8 +90,24 @@ def get_pos_ru(word: str) -> str:
         analysis = mystem.analyze(word)
         if analysis and 'analysis' in analysis[0] and analysis[0]['analysis']:
             grammar_info = analysis[0]['analysis'][0]['gr']
-            pos_abbr = grammar_info.split('=')[0].split(',')[0].strip()
-            return POS_MAP.get(pos_abbr, '품사')
+            
+            # 1. 쉼표(,) 또는 등호(=)를 기준으로 품사 약어 추출
+            # 예: S=им,ед -> S / V,пр,изъяв -> V
+            parts = re.split(r'[,=]', grammar_info, 1) # 첫 번째 쉼표나 등호까지만 분리
+            pos_abbr_base = parts[0].strip()
+
+            # 2. 복합 품사 정보 처리 (예: A=cmp)
+            # Mystem의 비교급(cmp) 정보가 포함되어 있는지 확인
+            pos_full = grammar_info.split(',')[0].strip() # 예: A=cmp
+
+            # 3. 매핑 시도 (가장 상세한 정보 -> 기본 약어 순)
+            # POS_MAP에 A=cmp 같은 복합 약어가 있다면 먼저 사용
+            if pos_full in POS_MAP:
+                return POS_MAP[pos_full]
+            
+            # 기본 품사 약어 매핑 시도
+            return POS_MAP.get(pos_abbr_base, '품사')
+            
     return '품사'
 
 # ---------------------- OCR 함수 ----------------------
@@ -404,7 +424,7 @@ with left:
         )
 
     with col_accent:
-        ACCENT_ONLINE_URL = "[https://russiangram.com/](https://russiangram.com/)"
+        ACCENT_ONLINE_URL = "https://russiangram.com/"
         
         # 🌟 순수 Markdown 하이퍼링크로 변경
         st.markdown(

@@ -5,7 +5,7 @@ import json
 import pandas as pd
 from pymystem3 import Mystem
 from google import genai
-from google.cloud import vision 
+from google.cloud import vision
 import io
 import urllib.parse 
 from typing import Union # Python 버전 호환성을 위해 추가

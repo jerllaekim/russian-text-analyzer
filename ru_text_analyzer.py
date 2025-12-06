@@ -335,7 +335,7 @@ def get_highlighted_html(text_to_process, highlight_words):
 # ---------------------- 6. UI 배치 및 메인 로직 ----------------------
 
 # --- 6.1. OCR 및 텍스트 입력 섹션 ---
-st.subheader("🖼️ 이미지에서 텍스트 추출(업데이트 예정)")
+st.subheader("이미지에서 텍스트 추출(업데이트 예정)")
 uploaded_file = st.file_uploader("JPG, PNG 등 이미지를 업로드하세요", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
@@ -352,12 +352,12 @@ if uploaded_file is not None:
 
 # 텍스트 반영 버튼 추가
 st.button(
-    "📚 중급러시아어연습 텍스트 반영하기(교재 2권 44페이지)", 
+    "중급러시아어연습 텍스트 반영하기(교재 2권 44페이지)", 
     on_click=load_default_text, 
     help="교재 연습용 텍스트를 입력창에 반영합니다."
 )
 
-st.subheader("📝 분석 대상 텍스트") 
+st.subheader("분석 대상 텍스트") 
 current_text = st.text_area(
     "러시아어 텍스트를 입력하거나 위에 업로드된 텍스트를 수정하세요", 
     value=st.session_state.input_text_area, 
@@ -454,7 +454,7 @@ with left:
         # TTS 관련 세션 상태 초기화 제거
 
 
-    st.button("🔄 선택 및 검색 초기화", key="reset_button", on_click=reset_all_state)
+    st.button("선택 및 검색 초기화", key="reset_button", on_click=reset_all_state)
     
 
 # --- 7.2. 단어 상세 정보 (right 컬럼) + 검색 링크 추가 ---
@@ -518,11 +518,11 @@ with right:
             
             # Multitran 링크 (순수 Markdown 하이퍼링크)
             with col1:
-                st.markdown(f"📚 [Multitran 검색]({multitran_url})")
+                st.markdown(f"[Multitran 검색]({multitran_url})")
             
             # 국립 코퍼스 링크 (순수 Markdown 하이퍼링크)
             with col2:
-                st.markdown(f"📖 [국립 코퍼스 검색]({corpus_url})")
+                st.markdown(f"[국립 코퍼스 검색]({corpus_url})")
             
         else:
             st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
@@ -533,7 +533,7 @@ with right:
 
 # ---------------------- 8. 하단: 누적 목록 + CSV ----------------------
 st.divider()
-st.subheader("📝 선택 단어 목록 (기본형 기준)") 
+st.subheader("택 단어 목록 (기본형 기준)") 
 
 selected = st.session_state.selected_words
 word_info = st.session_state.word_info

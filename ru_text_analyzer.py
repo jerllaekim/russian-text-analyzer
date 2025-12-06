@@ -661,9 +661,9 @@ _, col_video = st.columns([1, 1])
 with col_video:
     st.subheader("🎬 프로젝트 홍보 영상")
     if YOUTUBE_VIDEO_ID:
-        video_html = youtube_embed_html(YOUTUBE_VIDEO_ID)
+        video_html = youtube_embed_html(wJ65i_gDfT0)
         st.markdown(video_html, unsafe_allow_html=True)
-        st.caption(f"YouTube 영상 ID: {wJ65i_gDfT0}")
+        st.caption(f"YouTube 영상 ID: {YOUTUBE_VIDEO_ID}")
     else:
         st.warning("홍보 영상을 표시하려면 YOUTUBE_VIDEO_ID를 설정해주세요.")
 

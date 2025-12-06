@@ -58,7 +58,7 @@ mystem = Mystem()
 # ---------------------- 0.2. YouTube 임베드 함수 및 ID 정의 ----------------------
 
 # 📌 🚨 중요: 여기에 홍보 영상의 YouTube ID를 넣어주세요. (문자열로, 따옴표 안에)
-YOUTUBE_VIDEO_ID = "dQw4w9WgXcQ" 
+YOUTUBE_VIDEO_ID = "wJ65i_gDfT0" 
 
 def youtube_embed_html(video_id: str):
     """지정된 YouTube ID로 반응형 임베드 HTML을 반환합니다."""

@@ -85,7 +85,7 @@ def lemmatize_ru(word: str) -> str:
 @st.cache_data(show_spinner=False)
 def get_pos_ru(word: str) -> str:
     if ' ' in word.strip():
-        return '관용구'
+        return '구 형태'
     if re.fullmatch(r'\w+', word, flags=re.UNICODE):
         analysis = mystem.analyze(word)
         if analysis and 'analysis' in analysis[0] and analysis[0]['analysis']:

@@ -57,7 +57,7 @@ mystem = Mystem()
 
 # ---------------------- 0.2. YouTube 임베드 함수 및 ID 정의 ----------------------
 
-# 📌 여기에 홍보 영상의 YouTube ID를 넣어주세요. (예: "dQw4w9WgXcQ"는 임의 ID입니다.)
+# 📌 🚨 중요: 여기에 홍보 영상의 YouTube ID를 넣어주세요. (문자열로, 따옴표 안에)
 YOUTUBE_VIDEO_ID = "dQw4w9WgXcQ" 
 
 def youtube_embed_html(video_id: str):
@@ -101,7 +101,7 @@ def lemmatize_ru(word: str) -> str:
 
 @st.cache_data(show_spinner=False)
 def get_pos_ru(word: str) -> str:
-    # 🌟 공백이 포함된 경우 '구 형태'로 반환 (구 분석 기능을 위함)
+    # 공백이 포함된 경우 '구 형태'로 반환 (구 분석 기능을 위함)
     if ' ' in word.strip():
         return '구 형태' 
     if re.fullmatch(r'\w+', word, flags=re.UNICODE):
@@ -555,7 +555,7 @@ with right:
                     token_info = st.session_state.word_info.get(token_lemma)
                     
                     # *개별 단어 분석 결과를 표시*
-                    if token_info and token_info.get('pos') != '구 형태': # 구 전체의 정보가 아닌, 단어 정보여야 함
+                    if token_info and token_info.get('pos') != '구 형태': 
                         token_pos = token_info.get("pos", "품사")
                         token_meanings = token_info.get("ko_meanings", [])
                         
@@ -660,10 +660,12 @@ _, col_video = st.columns([1, 1])
 
 with col_video:
     st.subheader("🎬 프로젝트 홍보 영상")
-    if YOUTUBE_VIDEO_ID:
-        video_html = youtube_embed_html(wJ65i_gDfT0)
+    if YOUTUBE_VIDEO_ID:wJ65i_gDfT0
+        # 🚨 NameError 해결: 변수를 따옴표 없이 사용합니다.
+        video_html = youtube_embed_html(YOUTUBE_VIDEO_ID) 
         st.markdown(video_html, unsafe_allow_html=True)
-        st.caption(f"YouTube 영상 ID: {YOUTUBE_VIDEO_ID}")
+        # 캡션에서도 변수를 올바르게 참조합니다.
+        st.caption(f"YouTube 영상 ID: {YOUTUBE_VIDEO_ID}") 
     else:
         st.warning("홍보 영상을 표시하려면 YOUTUBE_VIDEO_ID를 설정해주세요.")
 

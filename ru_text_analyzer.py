@@ -484,7 +484,7 @@ with left:
     st.button("선택 및 검색 초기화", key="reset_button", on_click=reset_all_state)
     
 
-# ---------------------- 7.2. 단어 상세 정보 (right 컬럼) + 검색 링크 추가 (구 분석 기능 개선) ----------------------
+# ---------------------- 7.2. 단어 상세 정보 (right 컬럼) + 영상 삽입 ----------------------
 with right:
     st.subheader("단어 상세 정보")
     
@@ -543,30 +543,77 @@ with right:
                 individual_words = clean_token.split() 
                 
                 for word in individual_words:
-                    # 문장부호 제거 후 처리 (원형 추출 정확도를 높이기 위함)
                     processed_word = re.sub(r'[.,!?;:"]', '', word) 
                     
                     if not processed_word:
                         continue
                         
                     token_lemma = lemmatize_ru(processed_word)
-                    
-                    # 이미 정보가 로드되어 캐시된 경우 사용
+                    token_pos = get_pos_ru(processed_word)
                     token_info = st.session_state.word_info.get(token_lemma)
                     
-                    # *개별 단어 분석 결과를 표시*
-                    if token_info and token_info.get('pos') != '구 형태': 
+                    # 🚨 캐시에 정보가 없거나 구 정보만 있을 경우, Gemini API를 호출하여 뜻만 가져옵니다. 🚨
+                    if not token_info or token_info.get('pos') == '구 형태':
+                        try:
+                            # 기본형(lemma)만으로 API 호출하여 간략 정보를 가져옴
+                            loaded_info = fetch_from_gemini(token_lemma, token_lemma, token_pos)
+                            
+                            # 가져온 정보를 캐시에 저장하여 다음 검색에 재사용
+                            if loaded_info.get("ko_meanings") and loaded_info["ko_meanings"][0] != "JSON 파싱 오류":
+                                st.session_state.word_info[token_lemma] = {
+                                    **loaded_info, 
+                                    "loaded_token": token_lemma, 
+                                    "pos": token_pos
+                                }
+                                token_info = st.session_state.word_info[token_lemma]
+                            else:
+                                st.markdown(f"**{word}** (`{token_lemma}`) → 뜻 정보 로드 실패")
+                                continue
+                        except Exception as e:
+                            st.markdown(f"**{word}** (`{token_lemma}`) → API 오류")
+                            continue
+
+                    # *간략화된 단어 분석 결과를 표시*
+                    if token_info:
                         token_pos = token_info.get("pos", "품사")
                         token_meanings = token_info.get("ko_meanings", [])
                         
-                        st.markdown(f"**{word}** (`{token_lemma}` - {token_pos})")
-                        if token_meanings:
-                            st.markdown(f" → {'; '.join(token_meanings[:1])}")
-                        else:
-                            st.markdown(" → 뜻 정보 없음")
+                        display_meaning = "; ".join(token_meanings[:1])
                         
-                    else:
-                        st.markdown(f"**{word}** (`{token_lemma}`) → **검색창에 별도로 입력**하여 자세한 정보를 로드하세요.")
+                        # 요청하신 간략한 출력 형식
+                        st.markdown(f"**{word}** (`{token_lemma}` - {token_pos}) → **{display_meaning}**")
+                    
+            # --- 3. 외부 검색 링크 ---
+            st.markdown("---")
+            encoded_query = urllib.parse.quote(clean_token)
+            
+            multitran_url = f"https://www.multitran.com/m.exe?s={encoded_query}&l1=1&l2=2"
+            corpus_url = f"http://search.ruscorpora.ru/search.xml?text={encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1"
+            
+            st.markdown("#### 🌐 외부 검색")
+            col1, col2 = st.columns(2)
+            
+            with col1:
+                st.markdown(f"[Multitran 검색]({multitran_url})")
+            
+            with col2:
+                st.markdown(f"[국립 코퍼스 검색]({corpus_url})")
+            
+        else:
+            st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
+            
+    else:
+        st.info("검색창에 단어를 입력하면 여기에 상세 정보가 표시됩니다.")
+        
+    # --- 10. 홍보 영상 삽입 (단어 상세 정보 아래) ---
+    st.markdown("---")
+    st.subheader("🎬 프로젝트 홍보 영상")
+    if YOUTUBE_VIDEO_ID:
+        video_html = youtube_embed_html(YOUTUBE_VIDEO_ID) 
+        st.markdown(video_html, unsafe_allow_html=True)
+        st.caption(f"YouTube 영상 ID: {YOUTUBE_VIDEO_ID}") 
+    else:
+        st.warning("홍보 영상을 표시하려면 YOUTUBE_VIDEO_ID를 설정해주세요.")
 
             # --- 3. 외부 검색 링크 ---
             st.markdown("---")

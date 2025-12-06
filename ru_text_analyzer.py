@@ -7,9 +7,8 @@ from pymystem3 import Mystem
 from google import genai
 from google.cloud import vision
 import io
-import urllib.parse 
-from typing import Union # Python 버전 호환성을 위해 추가
-# struct, base64, time 모듈은 TTS 기능 제거로 인해 삭제합니다.
+import urllib.parse
+from typing import Union
 
 # ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
 
@@ -24,19 +23,14 @@ DEFAULT_TEST_TEXT = "Человек идёт по улице. Это тесто�
 # ---------------------- 0.1. 페이지 설정 및 배너 삽입 ----------------------
 st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
 
-# 🌟 배너 이미지를 가장 상단에 삽입
-# GitHub 저장소 루트 폴더에 'banner.png' 파일을 업로드해야 합니다.
-IMAGE_FILE_PATH = "banner.png" 
+# 🌟 배너 이미지 파일 경로
+IMAGE_FILE_PATH = "banner.png"
 
 try:
-    # 이미지가 없으면 오류가 날 수 있으므로 try-except로 처리
     st.image(IMAGE_FILE_PATH, use_column_width=True)
 except FileNotFoundError:
-    # 이미지가 없을 경우, 사용자에게 안내
     st.warning(f"배너 이미지 파일 ({IMAGE_FILE_PATH})을 찾을 수 없습니다. GitHub 저장소에 이미지를 업로드하고 파일명을 확인해주세요.")
-    st.markdown("###") # 제목과의 간격 확보
-
-# st.title("러시아어 텍스트 분석기") # 🌟 제목 제거됨
+    st.markdown("###")
 
 # --- 세션 상태 초기화 ---
 if "selected_words" not in st.session_state:
@@ -54,21 +48,44 @@ if "input_text_area" not in st.session_state:
 if "translated_text" not in st.session_state:
     st.session_state.translated_text = ""
 if "last_processed_text" not in st.session_state:
-    st.session_state.last_processed_text = "" 
+    st.session_state.last_processed_text = ""
 if "last_processed_query" not in st.session_state:
     st.session_state.last_processed_query = ""
-# TTS 관련 세션 상태 제거: tts_audio, tts_text_key, prepared_tts_text
 
 
 mystem = Mystem()
+
+# ---------------------- 0.2. YouTube 임베드 함수 및 ID 정의 ----------------------
+
+# 📌 여기에 홍보 영상의 YouTube ID를 넣어주세요. (예: "dQw4w9WgXcQ"는 임의 ID입니다.)
+YOUTUBE_VIDEO_ID = "dQw4w9WgXcQ" 
+
+def youtube_embed_html(video_id: str):
+    """지정된 YouTube ID로 반응형 임베드 HTML을 반환합니다."""
+    embed_url = f"https://www.youtube.com/embed/{video_id}?autoplay=0&rel=0"
+    
+    html_code = f"""
+    <div class="video-container-wrapper">
+        <div class="video-responsive">
+            <iframe
+                src="{embed_url}"
+                frameborder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowfullscreen
+                title="프로젝트 홍보 영상"
+            ></iframe>
+        </div>
+    </div>
+    """
+    return html_code
+
 
 # ---------------------- 품사 변환 딕셔너리 및 Mystem 함수 ----------------------
 POS_MAP = {
     'S': '명사', 'V': '동사', 'A': '형용사', 'ADV': '부사', 'PR': '전치사',
     'CONJ': '접속사', 'INTJ': '감탄사', 'PART': '불변화사', 'NUM': '수사',
     'APRO': '대명사적 형용사', 'ANUM': '서수사', 'SPRO': '대명사',
-    # 🌟 Mystem 약어 추가: 동사형용사(PRICL), 비교급(COMP, A=cmp), 기타(ADVB)
-    'PRICL': '동사부사', 
+    'PRICL': '동사부사',
     'COMP': '비교급', 'A=cmp': '비교급 형용사', 'ADV=cmp': '비교급 부사',
     'ADVB': '부사',
 }
@@ -84,28 +101,22 @@ def lemmatize_ru(word: str) -> str:
 
 @st.cache_data(show_spinner=False)
 def get_pos_ru(word: str) -> str:
+    # 🌟 공백이 포함된 경우 '구 형태'로 반환 (구 분석 기능을 위함)
     if ' ' in word.strip():
-        return '구 형태'
+        return '구 형태' 
     if re.fullmatch(r'\w+', word, flags=re.UNICODE):
         analysis = mystem.analyze(word)
         if analysis and 'analysis' in analysis[0] and analysis[0]['analysis']:
             grammar_info = analysis[0]['analysis'][0]['gr']
             
-            # 1. 쉼표(,) 또는 등호(=)를 기준으로 품사 약어 추출
-            # 예: S=им,ед -> S / V,пр,изъяв -> V
-            parts = re.split(r'[,=]', grammar_info, 1) # 첫 번째 쉼표나 등호까지만 분리
+            parts = re.split(r'[,=]', grammar_info, 1)
             pos_abbr_base = parts[0].strip()
 
-            # 2. 복합 품사 정보 처리 (예: A=cmp)
-            # Mystem의 비교급(cmp) 정보가 포함되어 있는지 확인
-            pos_full = grammar_info.split(',')[0].strip() # 예: A=cmp
+            pos_full = grammar_info.split(',')[0].strip()
 
-            # 3. 매핑 시도 (가장 상세한 정보 -> 기본 약어 순)
-            # POS_MAP에 A=cmp 같은 복합 약어가 있다면 먼저 사용
             if pos_full in POS_MAP:
                 return POS_MAP[pos_full]
             
-            # 기본 품사 약어 매핑 시도
             return POS_MAP.get(pos_abbr_base, '품사')
             
     return '품사'
@@ -135,7 +146,7 @@ def detect_text_from_image(image_bytes):
         return f"OCR 처리 중 오류 발생: {e}"
 
 
-# ---------------------- 1. Gemini 연동 함수 (기존) ----------------------
+# ---------------------- 1. Gemini 연동 함수 ----------------------
 
 def get_gemini_client():
     api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
@@ -193,7 +204,7 @@ def fetch_from_gemini(word, lemma, pos):
         return {"ko_meanings": ["JSON 파싱 오류"], "examples": []}
 
 
-# ---------------------- 2. 텍스트 번역 함수 (기존) ----------------------
+# ---------------------- 2. 텍스트 번역 함수 ----------------------
 
 @st.cache_data(show_spinner="텍스트를 한국어로 번역하는 중...")
 def translate_text(russian_text, highlight_words):
@@ -217,7 +228,7 @@ def translate_text(russian_text, highlight_words):
 
     try:
         res = client.models.generate_content(
-            model="gemini-2.0-flash", 
+            model="gemini-2.0-flash",
             contents=translation_prompt,
             config={"system_instruction": SYSTEM_INSTRUCTION}
         )
@@ -234,10 +245,36 @@ def translate_text(russian_text, highlight_words):
         return f"번역 오류 발생: {e}"
 
 
-# ---------------------- 3. 전역 스타일 정의 ----------------------
+# ---------------------- 3. 전역 스타일 정의 (폰트 및 유튜브 반응형 CSS 포함) ----------------------
 
 st.markdown("""
 <style>
+    /* 폰트 적용: Nanum Gothic 웹 폰트 (UI 글씨체 변경) */
+    @import url('[https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap](https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap)');
+    
+    html, body, .stApp {
+        font-family: 'Nanum Gothic', sans-serif !important; 
+    }
+    
+    /* YouTube 비디오를 위한 반응형 컨테이너 */
+    .video-responsive {
+        overflow: hidden;
+        padding-bottom: 56.25%; /* 16:9 비율 (9 / 16 * 100) */
+        position: relative;
+        height: 0;
+    }
+    .video-responsive iframe {
+        left: 0;
+        top: 0;
+        height: 100%;
+        width: 100%;
+        position: absolute;
+    }
+    .video-container-wrapper {
+        margin-top: 15px;
+        margin-bottom: 15px;
+    }
+    
     /* 텍스트 영역 가독성 */
     .text-container {
         line-height: 2.0;
@@ -246,11 +283,11 @@ st.markdown("""
     }
     /* 선택/검색된 단어/구 하이라이팅 + 밑줄 */
     .word-selected {
-        color: #007bff !important; 
+        color: #007bff !important;
         font-weight: bold;
-        background-color: #e0f0ff; 
+        background-color: #e0f0ff;
         padding: 2px 0px;
-        border-bottom: 3px solid #007bff; 
+        border-bottom: 3px solid #007bff;
         border-radius: 2px;
     }
     .search-link-container {
@@ -259,7 +296,7 @@ st.markdown("""
         margin-top: 15px;
         flex-wrap: wrap;
     }
-    /* 🌟 버튼 스타일: 기본 Streamlit 버튼과 유사하게 설정 (밝은 회색) */
+    /* 버튼 스타일 */
     .stButton>button {
         background-color: #f0f2f6;
         color: #333;
@@ -270,13 +307,12 @@ st.markdown("""
         background-color: #e8e8e8;
         border-color: #aaa;
     }
-    /* 이미지에 패딩이나 마진을 없애서 상단에 붙임 */
+    /* 기타 UI 조정 */
     .main .stImage {
         padding: 0;
         margin: 0;
     }
-    /* 제목의 기본 마진을 줄여 배너와 제목 사이 간격을 좁힘 */
-    .st-emotion-cache-1215r6w { /* Streamlit H1 heading container class */
+    .st-emotion-cache-1215r6w {
         margin-top: 0rem !important;
         padding-top: 0rem !important;
     }
@@ -284,23 +320,18 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 
-# 🌟 4. 버튼 클릭 시 텍스트를 로드하는 콜백 함수 정의
+# ---------------------- 4. 버튼 클릭 시 텍스트를 로드하는 콜백 함수 정의 ----------------------
 def load_default_text():
-    """
-    NEW_DEFAULT_TEXT를 st.session_state.input_text_area에 반영하고 
-    분석 상태를 초기화합니다.
-    """
-    st.session_state.input_text_area = NEW_DEFAULT_TEXT 
+    st.session_state.input_text_area = NEW_DEFAULT_TEXT
     st.session_state.translated_text = ""
     st.session_state.selected_words = []
     st.session_state.clicked_word = None
     st.session_state.word_info = {}
     st.session_state.current_search_query = ""
     st.session_state.last_processed_query = ""
-    # TTS 관련 세션 상태 초기화 제거
 
 
-# 🌟 5. 하이라이팅 로직 함수 정의 
+# ---------------------- 5. 하이라이팅 로직 함수 정의 ----------------------
 def get_highlighted_html(text_to_process, highlight_words):
     selected_class = "word-selected"
     display_html = text_to_process
@@ -317,15 +348,15 @@ def get_highlighted_html(text_to_process, highlight_words):
         if ' ' in phrase:
             # 구(Phrase) 검색
             display_html = re.sub(
-                f'({escaped_phrase})', 
-                f'<span class="{selected_class}">\\1</span>', 
+                f'({escaped_phrase})',
+                f'<span class="{selected_class}">\\1</span>',
                 display_html
             )
         else:
             # 단어(Word) 검색 (\b는 단어 경계)
             pattern = re.compile(r'\b' + escaped_phrase + r'\b')
             display_html = pattern.sub(
-                f'<span class="{selected_class}">{phrase}</span>', 
+                f'<span class="{selected_class}">{phrase}</span>',
                 display_html
             )
     
@@ -352,16 +383,16 @@ if uploaded_file is not None:
 
 # 텍스트 반영 버튼 추가
 st.button(
-    "중급러시아어연습 텍스트 반영하기(교재 2권 44페이지)", 
-    on_click=load_default_text, 
+    "중급러시아어연습 텍스트 반영하기(교재 2권 44페이지)",
+    on_click=load_default_text,
     help="교재 연습용 텍스트를 입력창에 반영합니다."
 )
 
-st.subheader("분석 대상 텍스트") 
+st.subheader("분석 대상 텍스트")
 current_text = st.text_area(
-    "러시아어 텍스트를 입력하거나 위에 업로드된 텍스트를 수정하세요", 
-    value=st.session_state.input_text_area, 
-    height=150, 
+    "러시아어 텍스트를 입력하거나 위에 업로드된 텍스트를 수정하세요",
+    value=st.session_state.input_text_area,
+    height=150,
     key="input_text_area"
 )
 
@@ -373,12 +404,11 @@ if current_text != st.session_state.last_processed_text:
     st.session_state.clicked_word = None
     st.session_state.word_info = {}
     st.session_state.current_search_query = ""
-    # TTS 관련 세션 상태 업데이트 제거
 
 
 # --- 6.2. 단어 검색창 및 로직 ---
 st.divider()
-st.subheader("단어/구 검색") 
+st.subheader("🔍 단어/구 검색")
 manual_input = st.text_input("단어 또는 구를 입력하고 Enter (예: 'идёт по улице')", key="current_search_query")
 
 if manual_input and manual_input != st.session_state.get("last_processed_query"):
@@ -390,18 +420,18 @@ if manual_input and manual_input != st.session_state.get("last_processed_query")
     with st.spinner(f"'{manual_input}'에 대한 정보 분석 중..."):
         clean_input = manual_input
         lemma = lemmatize_ru(clean_input)
-        pos = get_pos_ru(clean_input) 
+        pos = get_pos_ru(clean_input)
         try:
             info = fetch_from_gemini(clean_input, lemma, pos)
             # 기본형(lemma) 기준으로 정보 저장. 단, 현재 검색어(token)가 다르면 업데이트
             if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != clean_input:
-                st.session_state.word_info[lemma] = {**info, "loaded_token": clean_input, "pos": pos}  
+                st.session_state.word_info[lemma] = {**info, "loaded_token": clean_input, "pos": pos}
         except Exception as e:
             st.error(f"Gemini 오류: {e}")
             
-    st.session_state.last_processed_query = manual_input 
+    st.session_state.last_processed_query = manual_input
 
-st.markdown("---") 
+st.markdown("---")
 
 
 # ---------------------- 7. 텍스트 하이라이팅 및 상세 정보 레이아웃 ----------------------
@@ -417,16 +447,14 @@ with left:
     
     with col_tts:
         ELEVENLABS_URL = "https://elevenlabs.io/"
-        # 🌟 ElevenLabs 링크로 변경 (순수 Markdown 하이퍼링크)
         st.markdown(
             f"[▶️ 텍스트 음성 듣기 (ElevenLabs)]({ELEVENLABS_URL})",
-            unsafe_allow_html=False 
+            unsafe_allow_html=False
         )
 
     with col_accent:
-        ACCENT_ONLINE_URL = "https://russiangram.com/"
+        ACCENT_ONLINE_URL = "[https://russiangram.com/](https://russiangram.com/)"
         
-        # 🌟 순수 Markdown 하이퍼링크로 변경
         st.markdown(
             f"🔊 [강세 표시 사이트로 이동 (russiangram.com)]({ACCENT_ONLINE_URL})",
             unsafe_allow_html=False
@@ -451,13 +479,12 @@ with left:
         st.session_state.ocr_output_text = ""
         st.session_state.translated_text = ""
         st.session_state.last_processed_text = ""
-        # TTS 관련 세션 상태 초기화 제거
 
 
     st.button("선택 및 검색 초기화", key="reset_button", on_click=reset_all_state)
     
 
-# --- 7.2. 단어 상세 정보 (right 컬럼) + 검색 링크 추가 ---
+# ---------------------- 7.2. 단어 상세 정보 (right 컬럼) + 검색 링크 추가 (구 분석 기능 개선) ----------------------
 with right:
     st.subheader("단어 상세 정보")
     
@@ -469,18 +496,19 @@ with right:
         info = st.session_state.word_info.get(lemma, {})
 
         if info and "ko_meanings" in info:
-            pos = info.get("pos", "품사") 
-            aspect_pair = info.get("aspect_pair") 
+            pos = info.get("pos", "품사")
+            aspect_pair = info.get("aspect_pair")
             
-            st.markdown(f"### **{clean_token}**") 
+            # --- 1. 구 전체의 정보 표시 ---
+            st.markdown(f"### **{clean_token}**")
             
             if pos == '동사' and aspect_pair:
                 st.markdown(f"**기본형 (불완료상):** *{aspect_pair.get('imp', lemma)}*")
                 st.markdown(f"**완료상:** *{aspect_pair.get('perf', '정보 없음')}*")
                 st.markdown(f"**품사:** {pos}")
-            elif pos == '관용구':
+            elif pos == '구 형태': 
                 st.markdown(f"**구(句) 형태:** *{lemma}*")
-                st.markdown(f"**품사:** {pos}")
+                st.markdown(f"**품사:** {pos} (개별 단어 분석을 참고하세요)")
             else:
                 st.markdown(f"**기본형 (Lemma):** *{lemma}* ({pos})")
             
@@ -507,20 +535,52 @@ with right:
                 else:
                     st.info("예문 정보가 없습니다.")
             
-            # --- 외부 검색 링크 수정 (하이퍼링크로 복원) ---
+            # --- 2. 구 안에 있는 개별 단어 정보 표시 (요청 사항 반영) ---
+            if pos == '구 형태':
+                st.markdown("---")
+                st.markdown("#### 낱말(토큰) 분석")
+                
+                individual_words = clean_token.split() 
+                
+                for word in individual_words:
+                    # 문장부호 제거 후 처리 (원형 추출 정확도를 높이기 위함)
+                    processed_word = re.sub(r'[.,!?;:"]', '', word) 
+                    
+                    if not processed_word:
+                        continue
+                        
+                    token_lemma = lemmatize_ru(processed_word)
+                    
+                    # 이미 정보가 로드되어 캐시된 경우 사용
+                    token_info = st.session_state.word_info.get(token_lemma)
+                    
+                    # *개별 단어 분석 결과를 표시*
+                    if token_info and token_info.get('pos') != '구 형태': # 구 전체의 정보가 아닌, 단어 정보여야 함
+                        token_pos = token_info.get("pos", "품사")
+                        token_meanings = token_info.get("ko_meanings", [])
+                        
+                        st.markdown(f"**{word}** (`{token_lemma}` - {token_pos})")
+                        if token_meanings:
+                            st.markdown(f" → {'; '.join(token_meanings[:1])}")
+                        else:
+                            st.markdown(" → 뜻 정보 없음")
+                        
+                    else:
+                        st.markdown(f"**{word}** (`{token_lemma}`) → **검색창에 별도로 입력**하여 자세한 정보를 로드하세요.")
+
+            # --- 3. 외부 검색 링크 ---
+            st.markdown("---")
             encoded_query = urllib.parse.quote(clean_token)
             
-            multitran_url = f"https://www.multitran.com/m.exe?s={encoded_query}&l1=1&l2=2" 
-            corpus_url = f"http://search.ruscorpora.ru/search.xml?text={encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1" 
+            multitran_url = f"[https://www.multitran.com/m.exe?s=](https://www.multitran.com/m.exe?s=){encoded_query}&l1=1&l2=2"
+            corpus_url = f"[http://search.ruscorpora.ru/search.xml?text=](http://search.ruscorpora.ru/search.xml?text=){encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1"
             
             st.markdown("#### 🌐 외부 검색")
             col1, col2 = st.columns(2)
             
-            # Multitran 링크 (순수 Markdown 하이퍼링크)
             with col1:
                 st.markdown(f"[Multitran 검색]({multitran_url})")
             
-            # 국립 코퍼스 링크 (순수 Markdown 하이퍼링크)
             with col2:
                 st.markdown(f"[국립 코퍼스 검색]({corpus_url})")
             
@@ -533,7 +593,7 @@ with right:
 
 # ---------------------- 8. 하단: 누적 목록 + CSV ----------------------
 st.divider()
-st.subheader("택 단어 목록 (기본형 기준)") 
+st.subheader("택 단어 목록 (기본형 기준)")
 
 selected = st.session_state.selected_words
 word_info = st.session_state.word_info
@@ -548,7 +608,7 @@ if word_info:
         if lemma not in processed_lemmas and lemma in word_info:
             info = word_info[lemma]
             if info.get("ko_meanings") and info["ko_meanings"][0] != "JSON 파싱 오류":
-                pos = info.get("pos", "품사") 
+                pos = info.get("pos", "품사")
                 
                 if pos == '동사' and info.get("aspect_pair"):
                     imp = info['aspect_pair'].get('imp', lemma)
@@ -558,7 +618,7 @@ if word_info:
                     base_form = lemma
 
                 short = "; ".join(info["ko_meanings"][:2])
-                short = f"({pos}) {short}" 
+                short = f"({pos}) {short}"
 
                 rows.append({"기본형": base_form, "대표 뜻": short})
                 processed_lemmas.add(lemma)
@@ -570,13 +630,13 @@ if word_info:
         st.info("선택된 단어의 정보가 로드 중이거나, 표시할 정보가 없습니다.")
 
 
-# ---------------------- 9. 하단: 한국어 번역본 (가장 아래에 위치) ----------------------
+# ---------------------- 9. 하단: 한국어 번역본 ----------------------
 st.divider()
-st.subheader("한국어 번역본") 
+st.subheader("한국어 번역본")
 
 if st.session_state.translated_text == "" or current_text != st.session_state.last_processed_text:
     st.session_state.translated_text = translate_text(
-        current_text, 
+        current_text,
         st.session_state.selected_words
     )
     st.session_state.last_processed_text = current_text
@@ -590,13 +650,30 @@ elif translated_text.startswith("번역 오류 발생"):
 else:
     st.markdown(f'<div class="text-container" style="color: #333; font-weight: 500;">{translated_text}</div>', unsafe_allow_html=True)
 
-# ---------------------- 10. 저작권 표시 (페이지 최하단) ----------------------
+
+# ---------------------- 10. 홍보 영상 삽입 (페이지 우측 하단) ----------------------
+
+st.divider()
+
+# 우측 하단에 배치하기 위해 컬럼 사용
+_, col_video = st.columns([1, 1])
+
+with col_video:
+    st.subheader("🎬 프로젝트 홍보 영상")
+    if YOUTUBE_VIDEO_ID:
+        video_html = youtube_embed_html(YOUTUBE_VIDEO_ID)
+        st.markdown(video_html, unsafe_allow_html=True)
+        st.caption(f"YouTube 영상 ID: {wJ65i_gDfT0}")
+    else:
+        st.warning("홍보 영상을 표시하려면 YOUTUBE_VIDEO_ID를 설정해주세요.")
+
+# ---------------------- 11. 저작권 표시 (페이지 최하단) ----------------------
 st.markdown("---")
 st.markdown("""
 <div style="text-align: center; font-size: 0.75em; color: #888;">
-    이 페이지는 연세대학교 노어노문학과 25-2 러시아어 교육론 5팀의 프로젝트 결과물입니다. 
+    이 페이지는 연세대학교 노어노문학과 25-2 러시아어 교육론 5팀의 프로젝트 결과물입니다.
     <br>
-    본 페이지의 내용, 기능 및 데이터를 학습 목적 이외의 용도로 무단 복제, 배포, 상업적 이용할 경우, 
+    본 페이지의 내용, 기능 및 데이터를 학습 목적 이외의 용도로 무단 복제, 배포, 상업적 이용할 경우,
     관련 법령에 따라 민사상 손해배상 청구 및 형사상 처벌을 받을 수 있습니다.
 </div>
 """, unsafe_allow_html=True)

@@ -485,7 +485,7 @@ with left:
     st.button("선택 및 검색 초기화", key="reset_button", on_click=reset_all_state)
     
 
-# ---------------------- 7.2. 단어 상세 정보 (right 컬럼) + 영상 삽입 ----------------------
+# ---------------------- 7.2. 단어 상세 정보 (right 컬럼) ----------------------
 with right:
     st.subheader("단어 상세 정보")
     
@@ -606,16 +606,6 @@ with right:
             
     else:
         st.info("검색창에 단어를 입력하면 여기에 상세 정보가 표시됩니다.")
-        
-    # --- 10. 홍보 영상 삽입 (단어 상세 정보 섹션의 맨 아래) ---
-    st.markdown("---")
-    st.subheader("🎬 프로젝트 홍보 영상")
-    if YOUTUBE_VIDEO_ID:
-        video_html = youtube_embed_html(YOUTUBE_VIDEO_ID) 
-        st.markdown(video_html, unsafe_allow_html=True)
-        st.caption(f"YouTube 영상 ID: {YOUTUBE_VIDEO_ID}") 
-    else:
-        st.warning("홍보 영상을 표시하려면 YOUTUBE_VIDEO_ID를 설정해주세요.")
 
 
 # ---------------------- 8. 하단: 누적 목록 + CSV ----------------------
@@ -677,6 +667,23 @@ elif translated_text.startswith("번역 오류 발생"):
     st.error(translated_text)
 else:
     st.markdown(f'<div class="text-container" style="color: #333; font-weight: 500;">{translated_text}</div>', unsafe_allow_html=True)
+
+
+# ---------------------- 10. 홍보 영상 삽입 (페이지 맨 아래로 이동) ----------------------
+
+st.divider()
+
+# 우측 하단에 배치하기 위해 컬럼 사용 (이제 페이지 전체 하단 중앙에 가까워짐)
+_, col_video = st.columns([1, 1])
+
+with col_video:
+    st.subheader("🎬 프로젝트 홍보 영상")
+    if YOUTUBE_VIDEO_ID:
+        video_html = youtube_embed_html(YOUTUBE_VIDEO_ID) 
+        st.markdown(video_html, unsafe_allow_html=True)
+        st.caption(f"YouTube 영상 ID: {YOUTUBE_VIDEO_ID}") 
+    else:
+        st.warning("홍보 영상을 표시하려면 YOUTUBE_VIDEO_ID를 설정해주세요.")
 
 
 # ---------------------- 11. 저작권 표시 (페이지 최하단) ----------------------

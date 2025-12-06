@@ -408,7 +408,7 @@ if current_text != st.session_state.last_processed_text:
 
 # --- 6.2. 단어 검색창 및 로직 ---
 st.divider()
-st.subheader("🔍 단어/구 검색")
+st.subheader("단어/구 검색")
 manual_input = st.text_input("단어 또는 구를 입력하고 Enter (예: 'идёт по улице')", key="current_search_query")
 
 if manual_input and manual_input != st.session_state.get("last_processed_query"):

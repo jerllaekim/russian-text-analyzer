@@ -661,10 +661,9 @@ _, col_video = st.columns([1, 1])
 with col_video:
     st.subheader("🎬 프로젝트 홍보 영상")
     if YOUTUBE_VIDEO_ID:wJ65i_gDfT0
-        # 🚨 NameError 해결: 변수를 따옴표 없이 사용합니다.
+        # 🚨 NameError 및 IndentationError 해결: 올바른 들여쓰기로 변수를 전달합니다.
         video_html = youtube_embed_html(YOUTUBE_VIDEO_ID) 
         st.markdown(video_html, unsafe_allow_html=True)
-        # 캡션에서도 변수를 올바르게 참조합니다.
         st.caption(f"YouTube 영상 ID: {YOUTUBE_VIDEO_ID}") 
     else:
         st.warning("홍보 영상을 표시하려면 YOUTUBE_VIDEO_ID를 설정해주세요.")

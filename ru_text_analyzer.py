@@ -436,6 +436,7 @@ st.markdown("---")
 
 # ---------------------- 7. 텍스트 하이라이팅 및 상세 정보 레이아웃 ----------------------
 
+# 레이아웃: 왼쪽(원문), 오른쪽(상세정보 + 영상)
 left, right = st.columns([2, 1])
 
 
@@ -535,7 +536,7 @@ with right:
                 else:
                     st.info("예문 정보가 없습니다.")
             
-            # --- 2. 구 안에 있는 개별 단어 정보 표시 (요청 사항 반영) ---
+            # --- 2. 구 안에 있는 개별 단어 정보 표시 (요청 사항 반영: 간략 뜻 로드) ---
             if pos == '구 형태':
                 st.markdown("---")
                 st.markdown("#### 낱말(토큰) 분석")
@@ -543,6 +544,7 @@ with right:
                 individual_words = clean_token.split() 
                 
                 for word in individual_words:
+                    # 문장부호 제거 후 처리 (원형 추출 정확도를 높이기 위함)
                     processed_word = re.sub(r'[.,!?;:"]', '', word) 
                     
                     if not processed_word:
@@ -552,14 +554,14 @@ with right:
                     token_pos = get_pos_ru(processed_word)
                     token_info = st.session_state.word_info.get(token_lemma)
                     
-                    # 🚨 캐시에 정보가 없거나 구 정보만 있을 경우, Gemini API를 호출하여 뜻만 가져옵니다. 🚨
+                    # 캐시에 정보가 없거나 구 정보만 있을 경우, Gemini API를 호출하여 뜻만 가져옴
                     if not token_info or token_info.get('pos') == '구 형태':
                         try:
                             # 기본형(lemma)만으로 API 호출하여 간략 정보를 가져옴
                             loaded_info = fetch_from_gemini(token_lemma, token_lemma, token_pos)
                             
-                            # 가져온 정보를 캐시에 저장하여 다음 검색에 재사용
                             if loaded_info.get("ko_meanings") and loaded_info["ko_meanings"][0] != "JSON 파싱 오류":
+                                # 가져온 정보를 캐시에 저장
                                 st.session_state.word_info[token_lemma] = {
                                     **loaded_info, 
                                     "loaded_token": token_lemma, 
@@ -587,38 +589,6 @@ with right:
             st.markdown("---")
             encoded_query = urllib.parse.quote(clean_token)
             
-            multitran_url = f"https://www.multitran.com/m.exe?s={encoded_query}&l1=1&l2=2"
-            corpus_url = f"http://search.ruscorpora.ru/search.xml?text={encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1"
-            
-            st.markdown("#### 🌐 외부 검색")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                st.markdown(f"[Multitran 검색]({multitran_url})")
-            
-            with col2:
-                st.markdown(f"[국립 코퍼스 검색]({corpus_url})")
-            
-        else:
-            st.warning("단어 정보를 불러오는 중이거나 오류가 발생했습니다.")
-            
-    else:
-        st.info("검색창에 단어를 입력하면 여기에 상세 정보가 표시됩니다.")
-        
-    # --- 10. 홍보 영상 삽입 (단어 상세 정보 아래) ---
-    st.markdown("---")
-    st.subheader("🎬 프로젝트 홍보 영상")
-    if YOUTUBE_VIDEO_ID:
-        video_html = youtube_embed_html(YOUTUBE_VIDEO_ID) 
-        st.markdown(video_html, unsafe_allow_html=True)
-        st.caption(f"YouTube 영상 ID: {YOUTUBE_VIDEO_ID}") 
-    else:
-        st.warning("홍보 영상을 표시하려면 YOUTUBE_VIDEO_ID를 설정해주세요.")
-
-            # --- 3. 외부 검색 링크 ---
-            st.markdown("---")
-            encoded_query = urllib.parse.quote(clean_token)
-            
             multitran_url = f"[https://www.multitran.com/m.exe?s=](https://www.multitran.com/m.exe?s=){encoded_query}&l1=1&l2=2"
             corpus_url = f"[http://search.ruscorpora.ru/search.xml?text=](http://search.ruscorpora.ru/search.xml?text=){encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1"
             
@@ -636,11 +606,22 @@ with right:
             
     else:
         st.info("검색창에 단어를 입력하면 여기에 상세 정보가 표시됩니다.")
+        
+    # --- 10. 홍보 영상 삽입 (단어 상세 정보 섹션의 맨 아래) ---
+    st.markdown("---")
+    st.subheader("🎬 프로젝트 홍보 영상")
+    if YOUTUBE_VIDEO_ID:
+        video_html = youtube_embed_html(YOUTUBE_VIDEO_ID) 
+        st.markdown(video_html, unsafe_allow_html=True)
+        st.caption(f"YouTube 영상 ID: {YOUTUBE_VIDEO_ID}") 
+    else:
+        st.warning("홍보 영상을 표시하려면 YOUTUBE_VIDEO_ID를 설정해주세요.")
 
 
 # ---------------------- 8. 하단: 누적 목록 + CSV ----------------------
 st.divider()
-st.subheader("택 단어 목록 (기본형 기준)")
+# 문구 수정 반영
+st.subheader("단어 목록 (기본형 기준)")
 
 selected = st.session_state.selected_words
 word_info = st.session_state.word_info
@@ -697,23 +678,6 @@ elif translated_text.startswith("번역 오류 발생"):
 else:
     st.markdown(f'<div class="text-container" style="color: #333; font-weight: 500;">{translated_text}</div>', unsafe_allow_html=True)
 
-
-# ---------------------- 10. 홍보 영상 삽입 (페이지 우측 하단) ----------------------
-
-st.divider()
-
-# 우측 하단에 배치하기 위해 컬럼 사용
-_, col_video = st.columns([1, 1])
-
-with col_video:
-    st.subheader("🎬 프로젝트 홍보 영상")
-    if YOUTUBE_VIDEO_ID:
-        # 이 부분이 line 665 근처일 것입니다. 4개의 공백으로만 들여씁니다.
-        video_html = youtube_embed_html(YOUTUBE_VIDEO_ID) 
-        st.markdown(video_html, unsafe_allow_html=True)
-        st.caption(f"YouTube 영상 ID: wJ65i_gDfT0") 
-    else:
-        st.warning("홍보 영상을 표시하려면 YOUTUBE_VIDEO_ID를 설정해주세요.")
 
 # ---------------------- 11. 저작권 표시 (페이지 최하단) ----------------------
 st.markdown("---")

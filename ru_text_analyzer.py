@@ -660,11 +660,11 @@ _, col_video = st.columns([1, 1])
 
 with col_video:
     st.subheader("🎬 프로젝트 홍보 영상")
-    if YOUTUBE_VIDEO_ID:"wJ65i_gDfT0"
+    if YOUTUBE_VIDEO_ID:
         # 이 부분이 line 665 근처일 것입니다. 4개의 공백으로만 들여씁니다.
         video_html = youtube_embed_html(YOUTUBE_VIDEO_ID) 
         st.markdown(video_html, unsafe_allow_html=True)
-        st.caption(f"YouTube 영상 ID: {YOUTUBE_VIDEO_ID}") 
+        st.caption(f"YouTube 영상 ID: wJ65i_gDfT0") 
     else:
         st.warning("홍보 영상을 표시하려면 YOUTUBE_VIDEO_ID를 설정해주세요.")
 

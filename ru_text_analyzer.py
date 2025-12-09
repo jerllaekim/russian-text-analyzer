@@ -10,7 +10,7 @@ import io
 import urllib.parse
 from typing import Union
 
-# ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
+# ---------------------- 0. 초기 설정 및 상수 ----------------------
 
 NEW_DEFAULT_TEXT = """Том живёт в Санкт-Петербурге уже несколько месяцев. В субботу, когда была хорошая погода, Том решил пойти в Исаакиевский собор. Том давно мечтал побывать в этом соборе. Исаакиевский собор — одно из самых высоких зданий в Санкт-Петербурге, его можно увидеть
 даже издалека. Когда Том гулял по центру города, он отовсюду видел золотой купол собора. Сначала Том решил осмотреть собор снаружи. Он пришёл на Исаакиевскую площадь — отсюда открывается прекрасный вид на собор. Потом Том подошёл к собору поближе, осмотрел его спереди, сзади, 2 раза обошёл вокруг собора, потом вошёл внутрь. Внутри собор очень красивый. Том прочитал, что купол собора — третий по величине в Европе. Том поднял голову вверх и увидел, что под куполом «летает» серебряный голубь. Том посмотрел вокруг: впереди, сзади, справа, слева — везде были красивые иконы.
@@ -20,6 +20,8 @@ NEW_DEFAULT_TEXT = """Том живёт в Санкт-Петербурге уж�
 DEFAULT_TEST_TEXT = "Человек идёт по улице. Это тестовая строка. Хорошо. Я часто читаю эту книгу."
 
 mystem = Mystem()
+YOUTUBE_VIDEO_ID = "wJ65i_gDfT0" 
+IMAGE_FILE_PATH = "banner.png"
 
 # --- 세션 상태 초기화 함수 (AttributeError 방지) ---
 def initialize_session_state():
@@ -50,9 +52,6 @@ initialize_session_state()
 
 st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
 
-# 🌟 배너 이미지 파일 경로
-IMAGE_FILE_PATH = "banner.png"
-
 try:
     st.image(IMAGE_FILE_PATH, use_column_width=True)
 except FileNotFoundError:
@@ -60,9 +59,7 @@ except FileNotFoundError:
     st.markdown("###")
 
 
-# ---------------------- 0.2. YouTube 임베드 함수 및 ID 정의 ----------------------
-
-YOUTUBE_VIDEO_ID = "wJ65i_gDfT0" 
+# ---------------------- 0.2. YouTube 임베드 함수 ----------------------
 
 def youtube_embed_html(video_id: str):
     """지정된 YouTube ID로 반응형 임베드 HTML을 반환합니다."""
@@ -105,31 +102,25 @@ def lemmatize_ru(word: str) -> str:
 
 @st.cache_data(show_spinner=False)
 def get_pos_ru(word: str) -> str:
-    # 공백이 포함된 경우 '구 형태'로 반환 (구 분석 기능을 위함)
     if ' ' in word.strip():
         return '구 형태' 
     if re.fullmatch(r'\w+', word, flags=re.UNICODE):
         analysis = mystem.analyze(word)
         if analysis and 'analysis' in analysis[0] and analysis[0]['analysis']:
             grammar_info = analysis[0]['analysis'][0]['gr']
-            
             parts = re.split(r'[,=]', grammar_info, 1)
             pos_abbr_base = parts[0].strip()
-
             pos_full = grammar_info.split(',')[0].strip()
-
             if pos_full in POS_MAP:
                 return POS_MAP[pos_full]
-            
             return POS_MAP.get(pos_abbr_base, '품사')
-            
     return '품사'
 
-# ---------------------- OCR 클라이언트 초기화 ----------------------
+# ---------------------- OCR 클라이언트 및 함수 ----------------------
+
 @st.cache_resource(show_spinner=False)
 def get_vision_client():
     try:
-        # Streamlit Secrets에서 GCP 서비스 계정 키 JSON 문자열을 가져옵니다.
         key_json = st.secrets.get("GOOGLE_APPLICATION_CREDENTIALS_JSON") 
         
         if key_json:
@@ -138,7 +129,6 @@ def get_vision_client():
             client = vision.ImageAnnotatorClient(credentials=credentials)
             return client
         
-        # 환경 변수 (GOOGLE_APPLICATION_CREDENTIALS)를 통한 인증 시도
         client = vision.ImageAnnotatorClient()
         return client
         
@@ -146,8 +136,6 @@ def get_vision_client():
         st.error(f"Vision API 클라이언트 초기화 오류: {e}")
         return None
 
-
-# ---------------------- OCR 함수 ----------------------
 @st.cache_data(show_spinner="이미지에서 텍스트 추출 중")
 def detect_text_from_image(image_bytes):
     
@@ -158,7 +146,6 @@ def detect_text_from_image(image_bytes):
 
     try:
         image = vision.Image(content=image_bytes)
-        # 러시아어 텍스트 추출 정확도 향상을 위한 언어 힌트 추가
         image_context = vision.ImageContext(language_hints=["ru"])
         
         response = client.text_detection(image=image, image_context=image_context)
@@ -173,75 +160,91 @@ def detect_text_from_image(image_bytes):
         return f"OCR 처리 중 오류 발생: {e}"
 
 
-# ---------------------- 1. Gemini 연동 함수 (TTL 5분 설정) ----------------------
+# ---------------------- 1. Gemini 연동 함수 (TTL 및 JSON Schema 적용) ----------------------
 
 def get_gemini_client():
     api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
-    # API 키가 환경 변수로 설정되어 있지 않은 경우, Google AI Studio 키 사용
-    if not api_key:
-        api_key = st.secrets.get("GEMINI_API_KEY_STUDIO")
-        
     return genai.Client(api_key=api_key) if api_key else None
 
-# 🌟 TTL=60*5 (300초 = 5분) 설정: 같은 단어 검색 시 5분 동안은 API 호출 없이 캐시 사용
+def get_word_info_schema(is_verb: bool):
+    """Gemini 응답의 JSON 스키마를 정의합니다."""
+    schema = {
+        "type": "object",
+        "properties": {
+            "ko_meanings": {"type": "array", "items": {"type": "string"}, "description": "단어의 한국어 뜻 목록"},
+            "examples": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "ru": {"type": "string", "description": "러시아어 예문"},
+                        "ko": {"type": "string", "description": "한국어 번역"}
+                    },
+                    "required": ["ru", "ko"]
+                },
+                "description": "최대 두 개의 예문과 그 번역"
+            }
+        },
+        "required": ["ko_meanings", "examples"]
+    }
+
+    if is_verb:
+        schema['properties']['aspect_pair'] = {
+            "type": "object",
+            "properties": {
+                "imp": {"type": "string", "description": "불완료상 동사"},
+                "perf": {"type": "string", "description": "완료상 동사"}
+            },
+            "required": ["imp", "perf"],
+            "description": "동사의 상(aspect) 쌍"
+        }
+        schema['required'].append('aspect_pair')
+    
+    return schema
+
+# 🌟 TTL=300초 (5분) 설정: 캐시를 사용하여 API 호출 횟수 관리
 @st.cache_data(show_spinner=False, ttl=60 * 5) 
 def fetch_from_gemini(word, lemma, pos):
     client = get_gemini_client()
     if not client:
         return {"ko_meanings": [f"'{word}'의 API 키 없음 (GEMINI_API_KEY 설정 필요)"], "examples": []}
     
-    SYSTEM_PROMPT = "너는 러시아어-한국어 학습 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 최대 두 개만 제공한다. 한국어 뜻을 제공할 때 격 정보, 문법 정보 등 불필요한 부가 정보는 절대 포함하지 않는다. 만약 동사(V)이면, 불완료상(imp)과 완료상(perf) 형태를 함께 제공해야 한다. 반드시 JSON만 출력한다."
+    is_verb = (pos == '동사')
     
-    if pos == '동사':
-        prompt = f"""{SYSTEM_PROMPT}
-단어: {word}
-기본형: {lemma}
-{{ "ko_meanings": ["뜻1", "뜻2"], "aspect_pair": {{"imp": "불완료상 동사", "perf": "완료상 동사"}}, "examples": [ {{"ru": "예문1", "ko": "번역1"}}, {{"ru": "예문2", "ko": "번역2"}} ] }}
-"""
-    else:
-        prompt = f"""{SYSTEM_PROMPT}
-단어: {word}
-기본형: {lemma}
-{{ "ko_meanings": ["뜻1", "뜻2"], "examples": [ {{"ru": "예문1", "ko": "번역1"}}, {{"ru": "예문2", "ko": "번역2"}} ] }}
-"""
+    # JSON Schema와 system_instruction 설정하여 JSON 출력을 강제함
+    config = {
+        "system_instruction": "너는 러시아어-한국어 학습 도우미이다. 요청된 단어에 대한 정보를 제공하며, 절대로 부가적인 설명을 넣지 말고 오직 요청된 JSON 형식의 데이터만 출력한다. 한국어 뜻은 간단해야 한다.",
+        "response_mime_type": "application/json",
+        "response_schema": get_word_info_schema(is_verb),
+    }
     
+    # 프롬프트는 단순화
+    prompt = f"러시아어 단어: {word}. 기본형: {lemma}. 품사: {pos}. 정보를 요청합니다."
+
     try:
-        res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
-        text = res.text.strip()
+        res = client.models.generate_content(
+            model="gemini-2.0-flash",
+            contents=prompt,
+            config=config
+        )
         
-        # JSON 파싱 로직
-        if text.startswith("```"):
-            text = text.strip("`")
-            lines = text.splitlines()
-            if lines and lines[0].lower().startswith("json"):
-                text = "\n".join(lines[1:])
-            elif lines:
-                text = "\n".join(lines)
-                
-        start_index = text.find('{')
-        end_index = text.rfind('}')
-        
-        if start_index != -1 and end_index != -1 and end_index > start_index:
-            json_text = text[start_index : end_index + 1]
-        else:
-            json_text = text
-            
-        data = json.loads(json_text)
+        data = json.loads(res.text) # JSON 출력 강제했으므로 바로 파싱 시도
         
         if 'examples' in data and len(data['examples']) > 2:
             data['examples'] = data['examples'][:2]
+            
         return data
-        
-    except json.JSONDecodeError:
-        # JSON 파싱 오류 시 응답의 일부를 반환하여 디버깅에 도움
-        return {"ko_meanings": [f"JSON 파싱 오류: {text[:50]}..."], "examples": []}
+    
     except Exception as e:
-         return {"ko_meanings": [f"API 호출 오류 발생: {e}"], "examples": []}
+        error_msg = str(e)
+        if "RESOURCE_EXHAUSTED" in error_msg:
+             return {"ko_meanings": [f"API 할당량 초과 오류: {error_msg.split(',')[0]}..."], "examples": []}
+        return {"ko_meanings": [f"API 호출 또는 JSON 파싱 오류: {error_msg}"], "examples": []}
 
 
 # ---------------------- 2. 텍스트 번역 함수 (TTL 10분 설정) ----------------------
 
-# 🌟 TTL=60*10 (600초 = 10분) 설정: 텍스트가 바뀌지 않으면 10분 동안 캐시 사용
+# 🌟 TTL=600초 (10분) 설정: 캐시를 사용하여 API 호출 횟수 관리
 @st.cache_data(show_spinner="텍스트를 한국어로 번역하는 중...", ttl=60 * 10)
 def translate_text(russian_text, highlight_words):
     client = get_gemini_client()
@@ -286,7 +289,7 @@ def translate_text(russian_text, highlight_words):
 st.markdown("""
 <style>
     /* 폰트 적용: Nanum Gothic 웹 폰트 (UI 글씨체 변경) */
-    @import url('[https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap](https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap)');
+    @import url('https://fonts.googleapis.com/css2?family=Nanum+Gothic:wght@400;700&display=swap');
     
     html, body, .stApp {
         font-family: 'Nanum Gothic', sans-serif !important; 
@@ -382,7 +385,6 @@ def get_highlighted_html(text_to_process, highlight_words):
         
         if ' ' in phrase:
             # 구(Phrase) 검색
-            # 단어 경계 없이 전체 구를 찾아 대체
             display_html = re.sub(
                 f'({escaped_phrase})',
                 f'<span class="{selected_class}">\\1</span>',
@@ -390,8 +392,6 @@ def get_highlighted_html(text_to_process, highlight_words):
             )
         else:
             # 단어(Word) 검색 (\b는 단어 경계)
-            # 이미 하이라이팅된 HTML 태그 내부를 건드리지 않도록 패턴 조정이 필요하지만,
-            # Streamlit 환경에서 복잡한 정규식 회피를 위해 단순화된 버전 사용
             pattern = re.compile(r'\b' + escaped_phrase + r'\b')
             display_html = pattern.sub(
                 f'<span class="{selected_class}">{phrase}</span>',
@@ -460,7 +460,6 @@ if manual_input and manual_input != st.session_state.get("last_processed_query")
         lemma = lemmatize_ru(clean_input)
         pos = get_pos_ru(clean_input)
         try:
-            # fetch_from_gemini는 TTL이 설정되어 있어 반복 호출을 줄입니다.
             info = fetch_from_gemini(clean_input, lemma, pos)
             
             # 기본형(lemma) 기준으로 정보 저장. 단, 현재 검색어(token)가 다르면 업데이트
@@ -476,7 +475,6 @@ st.markdown("---")
 
 # ---------------------- 7. 텍스트 하이라이팅 및 상세 정보 레이아웃 ----------------------
 
-# 레이아웃: 왼쪽(원문), 오른쪽(상세정보 + 영상)
 left, right = st.columns([2, 1])
 
 
@@ -494,7 +492,7 @@ with left:
         )
 
     with col_accent:
-        ACCENT_ONLINE_URL = "[https://russiangram.com/](https://russiangram.com/)"
+        ACCENT_ONLINE_URL = "https://russiangram.com/"
         
         st.markdown(
             f"🔊 [강세 표시 사이트로 이동 (russiangram.com)]({ACCENT_ONLINE_URL})",
@@ -569,12 +567,10 @@ with right:
                     st.markdown(f"- {ex.get('ru', '')}")
                     st.markdown(f" → {ex.get('ko', '')}")
             else:
-                if ko_meanings and ko_meanings[0].startswith(f"'{current_token}'의 API 키 없음"):
+                if ko_meanings and ko_meanings[0].startswith("'{current_token}'의 API 키 없음"):
                     st.warning("API 키가 설정되지 않아 예문을 불러올 수 없습니다.")
-                elif ko_meanings and ko_meanings[0].startswith("JSON 파싱 오류"):
-                    st.error("Gemini API 정보 오류.")
-                elif ko_meanings and ko_meanings[0].startswith("API 호출 오류"):
-                    st.error(f"API 호출 오류: {ko_meanings[0]}")
+                elif ko_meanings and ko_meanings[0].startswith(("API 할당량 초과 오류", "API 호출 또는 JSON 파싱 오류")):
+                    st.error(f"Gemini API 오류: {ko_meanings[0]}")
                 else:
                     st.info("예문 정보가 없습니다.")
             
@@ -586,7 +582,6 @@ with right:
                 individual_words = clean_token.split() 
                 
                 for word in individual_words:
-                    # 문장부호 제거 후 처리 (원형 추출 정확도를 높이기 위함)
                     processed_word = re.sub(r'[.,!?;:"]', '', word) 
                     
                     if not processed_word:
@@ -596,14 +591,11 @@ with right:
                     token_pos = get_pos_ru(processed_word)
                     token_info = st.session_state.word_info.get(token_lemma)
                     
-                    # 캐시에 정보가 없거나 구 정보만 있을 경우, Gemini API를 호출하여 뜻만 가져옴
                     if not token_info or token_info.get('pos') == '구 형태':
                         try:
-                            # fetch_from_gemini는 TTL이 설정되어 있어 반복 호출을 줄입니다.
                             loaded_info = fetch_from_gemini(token_lemma, token_lemma, token_pos)
                             
-                            if loaded_info.get("ko_meanings") and not loaded_info["ko_meanings"][0].startswith(("JSON 파싱 오류", "API 호출 오류")):
-                                # 가져온 정보를 캐시에 저장
+                            if loaded_info.get("ko_meanings") and not loaded_info["ko_meanings"][0].startswith(("API 할당량 초과 오류", "API 호출 또는 JSON 파싱 오류")):
                                 st.session_state.word_info[token_lemma] = {
                                     **loaded_info, 
                                     "loaded_token": token_lemma, 
@@ -617,22 +609,19 @@ with right:
                             st.markdown(f"**{word}** (`{token_lemma}`) → API 호출 오류")
                             continue
 
-                    # *간략화된 단어 분석 결과를 표시*
                     if token_info:
                         token_pos = token_info.get("pos", "품사")
                         token_meanings = token_info.get("ko_meanings", [])
-                        
                         display_meaning = "; ".join(token_meanings[:1])
                         
-                        # 요청하신 간략한 출력 형식
                         st.markdown(f"**{word}** (`{token_lemma}` - {token_pos}) → **{display_meaning}**")
                     
             # --- 3. 외부 검색 링크 ---
             st.markdown("---")
             encoded_query = urllib.parse.quote(clean_token)
             
-            multitran_url = f"[https://www.multitran.com/m.exe?s=](https://www.multitran.com/m.exe?s=){encoded_query}&l1=1&l2=2"
-            corpus_url = f"[http://search.ruscorpora.ru/search.xml?text=](http://search.ruscorpora.ru/search.xml?text=){encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1"
+            multitran_url = f"https://www.multitran.com/m.exe?s={encoded_query}&l1=1&l2=2"
+            corpus_url = f"http://search.ruscorpora.ru/search.xml?text={encoded_query}&env=alpha&mode=main&sort=gr_tagging&lang=ru&nodia=1"
             
             st.markdown("#### 🌐 외부 검색")
             col1, col2 = st.columns(2)
@@ -652,7 +641,6 @@ with right:
 
 # ---------------------- 8. 하단: 누적 목록 + CSV ----------------------
 st.divider()
-# 문구 수정 반영
 st.subheader("단어 목록 (기본형 기준)")
 
 selected = st.session_state.selected_words
@@ -667,7 +655,7 @@ if word_info:
         lemma = lemmatize_ru(clean_tok)
         if lemma not in processed_lemmas and lemma in word_info:
             info = word_info[lemma]
-            if info.get("ko_meanings") and not info["ko_meanings"][0].startswith(("JSON 파싱 오류", "API 호출 오류")):
+            if info.get("ko_meanings") and not info["ko_meanings"][0].startswith(("API 할당량 초과 오류", "API 호출 또는 JSON 파싱 오류")):
                 pos = info.get("pos", "품사")
                 
                 if pos == '동사' and info.get("aspect_pair"):
@@ -694,7 +682,6 @@ if word_info:
 st.divider()
 st.subheader("한국어 번역본")
 
-# current_text가 바뀌지 않았고 translated_text가 비어있지 않으면 API 호출 방지 (TTL 설정으로 추가 방어)
 if st.session_state.translated_text == "" or current_text != st.session_state.last_processed_text:
     st.session_state.translated_text = translate_text(
         current_text,
@@ -716,7 +703,6 @@ else:
 
 st.divider()
 
-# 우측 하단에 배치하기 위해 컬럼 사용 (이제 페이지 전체 하단 중앙에 가까워짐)
 _, col_video = st.columns([1, 1])
 
 with col_video:

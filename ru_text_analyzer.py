@@ -25,7 +25,6 @@ IMAGE_FILE_PATH = "banner.png"
 
 # --- 세션 상태 초기화 함수 (AttributeError 방지) ---
 def initialize_session_state():
-    # 모든 필수 키를 안전하게 초기화합니다.
     if "selected_words" not in st.session_state:
         st.session_state.selected_words = []
     if "clicked_word" not in st.session_state:
@@ -89,6 +88,11 @@ POS_MAP = {
     'PRICL': '동사부사',
     'COMP': '비교급', 'A=cmp': '비교급 형용사', 'ADV=cmp': '비교급 부사',
     'ADVB': '부사',
+    'NONLEX': '비단어',      
+    'INIT': '머리글자',      
+    'P': '불변화사/전치사', 
+    'ADJ': '형용사',         
+    'N': '명사',             
 }
 
 @st.cache_data(show_spinner=False)
@@ -113,22 +117,27 @@ def get_pos_ru(word: str) -> str:
             pos_full = grammar_info.split(',')[0].strip()
             if pos_full in POS_MAP:
                 return POS_MAP[pos_full]
-            return POS_MAP.get(pos_abbr_base, '품사')
+            return POS_MAP.get(pos_abbr_base, '품사') 
     return '품사'
 
 # ---------------------- OCR 클라이언트 및 함수 ----------------------
 
 @st.cache_resource(show_spinner=False)
 def get_vision_client():
+    # Vision API 클라이언트 초기화 (Streamlit Secrets 사용)
     try:
+        # Secrets에서 JSON 키를 불러와 인증 우회
         key_json = st.secrets.get("GOOGLE_APPLICATION_CREDENTIALS_JSON") 
         
         if key_json:
             import google.auth
+            import google.cloud.vision
+            # JSON 문자열을 Credential 객체로 변환하여 메타데이터 서버 접근을 우회함
             credentials, _ = google.auth.load_credentials_from_dict(json.loads(key_json))
             client = vision.ImageAnnotatorClient(credentials=credentials)
             return client
         
+        # Secrets가 없는 경우, 환경 변수 (메타데이터 서버 경로)로 자동 인증 시도
         client = vision.ImageAnnotatorClient()
         return client
         
@@ -136,19 +145,25 @@ def get_vision_client():
         st.error(f"Vision API 클라이언트 초기화 오류: {e}")
         return None
 
-@st.cache_data(show_spinner="이미지에서 텍스트 추출 중")
+# 🌟 TTL=3600초 (1시간) 설정 및 타임아웃 30초 추가
+@st.cache_data(show_spinner="이미지에서 텍스트 추출 중...", ttl=3600, suppress_st_warning=True)
 def detect_text_from_image(image_bytes):
     
     client = get_vision_client()
     
     if client is None:
-        return "OCR API 클라이언트 초기화 실패. Secrets 설정을 확인해주세요."
+        return "OCR API 클라이언트 초기화 실패. Secrets (GOOGLE_APPLICATION_CREDENTIALS_JSON) 설정을 확인해주세요."
 
     try:
         image = vision.Image(content=image_bytes)
         image_context = vision.ImageContext(language_hints=["ru"])
         
-        response = client.text_detection(image=image, image_context=image_context)
+        # 🌟 타임아웃 30초 설정 추가
+        response = client.text_detection(
+            image=image, 
+            image_context=image_context,
+            timeout=30 
+        )
         texts = response.text
             
         if response.error.message:
@@ -157,7 +172,12 @@ def detect_text_from_image(image_bytes):
         return texts if texts else "이미지에서 텍스트를 찾을 수 없습니다."
 
     except Exception as e:
-        return f"OCR 처리 중 오류 발생: {e}"
+        error_msg = str(e)
+        # 🌟 오류 메시지 필터링: HTML 태그로 인식될 수 있는 복잡한 HTTP 정보를 제거
+        if "HTTPConnection" in error_msg or "ConnectTimeoutError" in error_msg:
+            return "OCR 처리 중 인증/네트워크 시간 초과 오류가 발생했습니다. (GCP Secrets 및 할당량 확인 필요)"
+            
+        return f"OCR 처리 중 오류 발생: {error_msg}"
 
 
 # ---------------------- 1. Gemini 연동 함수 (TTL 및 JSON Schema 적용) ----------------------
@@ -218,7 +238,6 @@ def fetch_from_gemini(word, lemma, pos):
         "response_schema": get_word_info_schema(is_verb),
     }
     
-    # 프롬프트는 단순화
     prompt = f"러시아어 단어: {word}. 기본형: {lemma}. 품사: {pos}. 정보를 요청합니다."
 
     try:
@@ -228,7 +247,7 @@ def fetch_from_gemini(word, lemma, pos):
             config=config
         )
         
-        data = json.loads(res.text) # JSON 출력 강제했으므로 바로 파싱 시도
+        data = json.loads(res.text) 
         
         if 'examples' in data and len(data['examples']) > 2:
             data['examples'] = data['examples'][:2]
@@ -404,14 +423,14 @@ def get_highlighted_html(text_to_process, highlight_words):
 # ---------------------- 6. UI 배치 및 메인 로직 ----------------------
 
 # --- 6.1. OCR 및 텍스트 입력 섹션 ---
-st.subheader("이미지에서 텍스트 추출(업데이트 예정)")
+st.subheader("이미지에서 텍스트 추출")
 uploaded_file = st.file_uploader("JPG, PNG 등 이미지를 업로드하세요", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:
     image_bytes = uploaded_file.getvalue()
-    ocr_result = detect_text_from_image(image_bytes)
+    ocr_result = detect_text_from_image(image_bytes) 
     
-    if ocr_result and not ocr_result.startswith(("OCR API 클라이언트 초기화 실패", "Vision API 오류")):
+    if ocr_result and not ocr_result.startswith(("OCR API 클라이언트 초기화 실패", "Vision API 오류", "OCR 처리 중 오류 발생")):
         st.session_state.ocr_output_text = ocr_result
         st.session_state.input_text_area = ocr_result
         st.session_state.translated_text = ""
@@ -717,11 +736,3 @@ with col_video:
 
 # ---------------------- 11. 저작권 표시 (페이지 최하단) ----------------------
 st.markdown("---")
-st.markdown("""
-<div style="text-align: center; font-size: 0.75em; color: #888;">
-    이 페이지는 연세대학교 노어노문학과 25-2 러시아어 교육론 5팀의 프로젝트 결과물입니다.
-    <br>
-    본 페이지의 내용, 기능 및 데이터를 학습 목적 이외의 용도로 무단 복제, 배포, 상업적 이용할 경우,
-    관련 법령에 따라 민사상 손해배상 청구 및 형사상 처벌을 받을 수 있습니다.
-</div>
-""", unsafe_allow_html=True)

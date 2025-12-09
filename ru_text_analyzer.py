@@ -10,7 +10,7 @@ import io
 import urllib.parse
 from typing import Union
 
-# ---------------------- 0. 초기 설정 및 세션 상태 (생략) ----------------------
+# ---------------------- 0. 초기 설정 및 세션 상태 ----------------------
 
 NEW_DEFAULT_TEXT = """Том живёт в Санкт-Петербурге уже несколько месяцев. В субботу, когда была хорошая погода, Том решил пойти в Исаакиевский собор. Том давно мечтал побывать в этом соборе. Исаакиевский собор — одно из самых высоких зданий в Санкт-Петербурге, его можно увидеть
 даже издалека. Когда Том гулял по центру города, он отовсюду видел золотой купол собора. Сначала Том решил осмотреть собор снаружи. Он пришёл на Исаакиевскую площадь — отсюда открывается прекрасный вид на собор. Потом Том подошёл к собору поближе, осмотрел его спереди, сзади, 2 раза обошёл вокруг собора, потом вошёл внутрь. Внутри собор очень красивый. Том прочитал, что купол собора — третий по величине в Европе. Том поднял голову вверх и увидел, что под куполом «летает» серебряный голубь. Том посмотрел вокруг: впереди, сзади, справа, слева — везде были красивые иконы.
@@ -19,17 +19,168 @@ NEW_DEFAULT_TEXT = """Том живёт в Санкт-Петербурге уж�
 
 DEFAULT_TEST_TEXT = "Человек идёт по улице. Это тестовая строка. Хорошо. Я часто читаю эту книгу."
 
+mystem = Mystem()
 
-# ---------------------- 0.1. 페이지 설정 및 배너 삽입 (생략) ----------------------
+# --- 세션 상태 초기화 함수 (AttributeError 방지) ---
+def initialize_session_state():
+    # 모든 필수 키를 안전하게 초기화합니다.
+    if "selected_words" not in st.session_state:
+        st.session_state.selected_words = []
+    if "clicked_word" not in st.session_state:
+        st.session_state.clicked_word = None
+    if "word_info" not in st.session_state:
+        st.session_state.word_info = {}
+    if "current_search_query" not in st.session_state:
+        st.session_state.current_search_query = ""
+    if "ocr_output_text" not in st.session_state:
+        st.session_state.ocr_output_text = ""
+    if "input_text_area" not in st.session_state:
+        st.session_state.input_text_area = DEFAULT_TEST_TEXT
+    if "translated_text" not in st.session_state:
+        st.session_state.translated_text = ""
+    if "last_processed_text" not in st.session_state:
+        st.session_state.last_processed_text = ""
+    if "last_processed_query" not in st.session_state:
+        st.session_state.last_processed_query = ""
+
+# ---------------------- 0.1. 페이지 설정 및 배너 삽입 ----------------------
+
+# 세션 상태 초기화 실행
+initialize_session_state()
+
 st.set_page_config(page_title="러시아어 텍스트 분석기", layout="wide")
 
-# (중간 코드 생략)
-# ... mystem, POS_MAP, lemmatize_ru, get_pos_ru, detect_text_from_image 함수는 그대로 유지
+# 🌟 배너 이미지 파일 경로
+IMAGE_FILE_PATH = "banner.png"
+
+try:
+    st.image(IMAGE_FILE_PATH, use_column_width=True)
+except FileNotFoundError:
+    st.warning(f"배너 이미지 파일 ({IMAGE_FILE_PATH})을 찾을 수 없습니다. GitHub 저장소에 이미지를 업로드하고 파일명을 확인해주세요.")
+    st.markdown("###")
+
+
+# ---------------------- 0.2. YouTube 임베드 함수 및 ID 정의 ----------------------
+
+YOUTUBE_VIDEO_ID = "wJ65i_gDfT0" 
+
+def youtube_embed_html(video_id: str):
+    """지정된 YouTube ID로 반응형 임베드 HTML을 반환합니다."""
+    embed_url = f"https://www.youtube.com/embed/{video_id}?autoplay=0&rel=0"
+    
+    html_code = f"""
+    <div class="video-container-wrapper">
+        <div class="video-responsive">
+            <iframe
+                src="{embed_url}"
+                frameborder="0"
+                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                allowfullscreen
+                title="프로젝트 홍보 영상"
+            ></iframe>
+        </div>
+    </div>
+    """
+    return html_code
+
+
+# ---------------------- 품사 변환 딕셔너리 및 Mystem 함수 ----------------------
+POS_MAP = {
+    'S': '명사', 'V': '동사', 'A': '형용사', 'ADV': '부사', 'PR': '전치사',
+    'CONJ': '접속사', 'INTJ': '감탄사', 'PART': '불변화사', 'NUM': '수사',
+    'APRO': '대명사적 형용사', 'ANUM': '서수사', 'SPRO': '대명사',
+    'PRICL': '동사부사',
+    'COMP': '비교급', 'A=cmp': '비교급 형용사', 'ADV=cmp': '비교급 부사',
+    'ADVB': '부사',
+}
+
+@st.cache_data(show_spinner=False)
+def lemmatize_ru(word: str) -> str:
+    if ' ' in word.strip():
+        return word.strip()
+    if re.fullmatch(r'\w+', word, flags=re.UNICODE):
+        lemmas = mystem.lemmatize(word)
+        return (lemmas[0] if lemmas else word).strip()
+    return word
+
+@st.cache_data(show_spinner=False)
+def get_pos_ru(word: str) -> str:
+    # 공백이 포함된 경우 '구 형태'로 반환 (구 분석 기능을 위함)
+    if ' ' in word.strip():
+        return '구 형태' 
+    if re.fullmatch(r'\w+', word, flags=re.UNICODE):
+        analysis = mystem.analyze(word)
+        if analysis and 'analysis' in analysis[0] and analysis[0]['analysis']:
+            grammar_info = analysis[0]['analysis'][0]['gr']
+            
+            parts = re.split(r'[,=]', grammar_info, 1)
+            pos_abbr_base = parts[0].strip()
+
+            pos_full = grammar_info.split(',')[0].strip()
+
+            if pos_full in POS_MAP:
+                return POS_MAP[pos_full]
+            
+            return POS_MAP.get(pos_abbr_base, '품사')
+            
+    return '품사'
+
+# ---------------------- OCR 클라이언트 초기화 ----------------------
+@st.cache_resource(show_spinner=False)
+def get_vision_client():
+    try:
+        # Streamlit Secrets에서 GCP 서비스 계정 키 JSON 문자열을 가져옵니다.
+        key_json = st.secrets.get("GOOGLE_APPLICATION_CREDENTIALS_JSON") 
+        
+        if key_json:
+            import google.auth
+            credentials, _ = google.auth.load_credentials_from_dict(json.loads(key_json))
+            client = vision.ImageAnnotatorClient(credentials=credentials)
+            return client
+        
+        # 환경 변수 (GOOGLE_APPLICATION_CREDENTIALS)를 통한 인증 시도
+        client = vision.ImageAnnotatorClient()
+        return client
+        
+    except Exception as e:
+        st.error(f"Vision API 클라이언트 초기화 오류: {e}")
+        return None
+
+
+# ---------------------- OCR 함수 ----------------------
+@st.cache_data(show_spinner="이미지에서 텍스트 추출 중")
+def detect_text_from_image(image_bytes):
+    
+    client = get_vision_client()
+    
+    if client is None:
+        return "OCR API 클라이언트 초기화 실패. Secrets 설정을 확인해주세요."
+
+    try:
+        image = vision.Image(content=image_bytes)
+        # 러시아어 텍스트 추출 정확도 향상을 위한 언어 힌트 추가
+        image_context = vision.ImageContext(language_hints=["ru"])
+        
+        response = client.text_detection(image=image, image_context=image_context)
+        texts = response.text
+            
+        if response.error.message:
+            return f"Vision API 오류: {response.error.message}"
+            
+        return texts if texts else "이미지에서 텍스트를 찾을 수 없습니다."
+
+    except Exception as e:
+        return f"OCR 처리 중 오류 발생: {e}"
+
 
 # ---------------------- 1. Gemini 연동 함수 (TTL 5분 설정) ----------------------
 
 def get_gemini_client():
     api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
+    # API 키가 환경 변수로 설정되어 있지 않은 경우, Google AI Studio 키 사용
+    if not api_key:
+        api_key = st.secrets.get("GEMINI_API_KEY_STUDIO")
+        
     return genai.Client(api_key=api_key) if api_key else None
 
 # 🌟 TTL=60*5 (300초 = 5분) 설정: 같은 단어 검색 시 5분 동안은 API 호출 없이 캐시 사용
@@ -39,8 +190,6 @@ def fetch_from_gemini(word, lemma, pos):
     if not client:
         return {"ko_meanings": [f"'{word}'의 API 키 없음 (GEMINI_API_KEY 설정 필요)"], "examples": []}
     
-    # (API 호출 로직 생략)
-    # ...
     SYSTEM_PROMPT = "너는 러시아어-한국어 학습 도우미이다. 러시아어 단어에 대해 간단한 한국어 뜻과 예문을 최대 두 개만 제공한다. 한국어 뜻을 제공할 때 격 정보, 문법 정보 등 불필요한 부가 정보는 절대 포함하지 않는다. 만약 동사(V)이면, 불완료상(imp)과 완료상(perf) 형태를 함께 제공해야 한다. 반드시 JSON만 출력한다."
     
     if pos == '동사':
@@ -60,8 +209,7 @@ def fetch_from_gemini(word, lemma, pos):
         res = client.models.generate_content(model="gemini-2.0-flash", contents=prompt)
         text = res.text.strip()
         
-        # JSON 파싱 로직 (기존과 동일)
-        # ...
+        # JSON 파싱 로직
         if text.startswith("```"):
             text = text.strip("`")
             lines = text.splitlines()
@@ -85,7 +233,7 @@ def fetch_from_gemini(word, lemma, pos):
         return data
         
     except json.JSONDecodeError:
-        # JSONDecodeError가 발생하더라도, Gemini 응답 텍스트를 담아 반환하여 디버깅에 도움을 줄 수 있습니다.
+        # JSON 파싱 오류 시 응답의 일부를 반환하여 디버깅에 도움
         return {"ko_meanings": [f"JSON 파싱 오류: {text[:50]}..."], "examples": []}
     except Exception as e:
          return {"ko_meanings": [f"API 호출 오류 발생: {e}"], "examples": []}
@@ -100,8 +248,6 @@ def translate_text(russian_text, highlight_words):
     if not client:
         return "Gemini API 키가 설정되지 않아 번역을 수행할 수 없습니다."
         
-    # (API 호출 로직 생략)
-    # ...
     phrases_to_highlight = ", ".join([f"'{w}'" for w in highlight_words])
     
     SYSTEM_INSTRUCTION = '''너는 번역가이다. 요청된 러시아어 텍스트를 문맥에 맞는 자연스러운 한국어로 번역하고, 절대로 다른 설명, 옵션, 질문, 부가적인 텍스트를 출력하지 않는다. 오직 최종 번역 텍스트만 출력한다.'''
@@ -134,7 +280,8 @@ def translate_text(russian_text, highlight_words):
     except Exception as e:
         return f"번역 오류 발생: {e}"
 
-# ---------------------- 3. 전역 스타일 정의 (폰트 및 유튜브 반응형 CSS 포함) ----------------------
+
+# ---------------------- 3. 전역 스타일 정의 ----------------------
 
 st.markdown("""
 <style>
@@ -217,7 +364,6 @@ def load_default_text():
     st.session_state.clicked_word = None
     st.session_state.word_info = {}
     st.session_state.current_search_query = ""
-    st.session_state.last_processed_query = ""
 
 
 # ---------------------- 5. 하이라이팅 로직 함수 정의 ----------------------
@@ -236,6 +382,7 @@ def get_highlighted_html(text_to_process, highlight_words):
         
         if ' ' in phrase:
             # 구(Phrase) 검색
+            # 단어 경계 없이 전체 구를 찾아 대체
             display_html = re.sub(
                 f'({escaped_phrase})',
                 f'<span class="{selected_class}">\\1</span>',
@@ -243,6 +390,8 @@ def get_highlighted_html(text_to_process, highlight_words):
             )
         else:
             # 단어(Word) 검색 (\b는 단어 경계)
+            # 이미 하이라이팅된 HTML 태그 내부를 건드리지 않도록 패턴 조정이 필요하지만,
+            # Streamlit 환경에서 복잡한 정규식 회피를 위해 단순화된 버전 사용
             pattern = re.compile(r'\b' + escaped_phrase + r'\b')
             display_html = pattern.sub(
                 f'<span class="{selected_class}">{phrase}</span>',
@@ -262,7 +411,7 @@ if uploaded_file is not None:
     image_bytes = uploaded_file.getvalue()
     ocr_result = detect_text_from_image(image_bytes)
     
-    if ocr_result and not ocr_result.startswith(("OCR API 키", "Vision API 오류")):
+    if ocr_result and not ocr_result.startswith(("OCR API 클라이언트 초기화 실패", "Vision API 오류")):
         st.session_state.ocr_output_text = ocr_result
         st.session_state.input_text_area = ocr_result
         st.session_state.translated_text = ""
@@ -311,7 +460,9 @@ if manual_input and manual_input != st.session_state.get("last_processed_query")
         lemma = lemmatize_ru(clean_input)
         pos = get_pos_ru(clean_input)
         try:
+            # fetch_from_gemini는 TTL이 설정되어 있어 반복 호출을 줄입니다.
             info = fetch_from_gemini(clean_input, lemma, pos)
+            
             # 기본형(lemma) 기준으로 정보 저장. 단, 현재 검색어(token)가 다르면 업데이트
             if lemma not in st.session_state.word_info or st.session_state.word_info.get(lemma, {}).get('loaded_token') != clean_input:
                 st.session_state.word_info[lemma] = {**info, "loaded_token": clean_input, "pos": pos}
@@ -420,8 +571,10 @@ with right:
             else:
                 if ko_meanings and ko_meanings[0].startswith(f"'{current_token}'의 API 키 없음"):
                     st.warning("API 키가 설정되지 않아 예문을 불러올 수 없습니다.")
-                elif ko_meanings and ko_meanings[0] == "JSON 파싱 오류":
+                elif ko_meanings and ko_meanings[0].startswith("JSON 파싱 오류"):
                     st.error("Gemini API 정보 오류.")
+                elif ko_meanings and ko_meanings[0].startswith("API 호출 오류"):
+                    st.error(f"API 호출 오류: {ko_meanings[0]}")
                 else:
                     st.info("예문 정보가 없습니다.")
             
@@ -446,10 +599,10 @@ with right:
                     # 캐시에 정보가 없거나 구 정보만 있을 경우, Gemini API를 호출하여 뜻만 가져옴
                     if not token_info or token_info.get('pos') == '구 형태':
                         try:
-                            # 기본형(lemma)만으로 API 호출하여 간략 정보를 가져옴
+                            # fetch_from_gemini는 TTL이 설정되어 있어 반복 호출을 줄입니다.
                             loaded_info = fetch_from_gemini(token_lemma, token_lemma, token_pos)
                             
-                            if loaded_info.get("ko_meanings") and loaded_info["ko_meanings"][0] != "JSON 파싱 오류":
+                            if loaded_info.get("ko_meanings") and not loaded_info["ko_meanings"][0].startswith(("JSON 파싱 오류", "API 호출 오류")):
                                 # 가져온 정보를 캐시에 저장
                                 st.session_state.word_info[token_lemma] = {
                                     **loaded_info, 
@@ -458,10 +611,10 @@ with right:
                                 }
                                 token_info = st.session_state.word_info[token_lemma]
                             else:
-                                st.markdown(f"**{word}** (`{token_lemma}`) → 뜻 정보 로드 실패")
+                                st.markdown(f"**{word}** (`{token_lemma}`) → 뜻 정보 로드 실패 또는 오류")
                                 continue
                         except Exception as e:
-                            st.markdown(f"**{word}** (`{token_lemma}`) → API 오류")
+                            st.markdown(f"**{word}** (`{token_lemma}`) → API 호출 오류")
                             continue
 
                     # *간략화된 단어 분석 결과를 표시*
@@ -514,7 +667,7 @@ if word_info:
         lemma = lemmatize_ru(clean_tok)
         if lemma not in processed_lemmas and lemma in word_info:
             info = word_info[lemma]
-            if info.get("ko_meanings") and info["ko_meanings"][0] != "JSON 파싱 오류":
+            if info.get("ko_meanings") and not info["ko_meanings"][0].startswith(("JSON 파싱 오류", "API 호출 오류")):
                 pos = info.get("pos", "품사")
                 
                 if pos == '동사' and info.get("aspect_pair"):
@@ -541,6 +694,7 @@ if word_info:
 st.divider()
 st.subheader("한국어 번역본")
 
+# current_text가 바뀌지 않았고 translated_text가 비어있지 않으면 API 호출 방지 (TTL 설정으로 추가 방어)
 if st.session_state.translated_text == "" or current_text != st.session_state.last_processed_text:
     st.session_state.translated_text = translate_text(
         current_text,

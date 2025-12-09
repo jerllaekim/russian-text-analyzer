@@ -88,6 +88,7 @@ POS_MAP = {
     'PRICL': '동사부사',
     'COMP': '비교급', 'A=cmp': '비교급 형용사', 'ADV=cmp': '비교급 부사',
     'ADVB': '부사',
+    # 보강된 품사 항목 (Mystem 반환값 포괄)
     'NONLEX': '비단어',      
     'INIT': '머리글자',      
     'P': '불변화사/전치사', 
@@ -145,8 +146,8 @@ def get_vision_client():
         st.error(f"Vision API 클라이언트 초기화 오류: {e}")
         return None
 
-# 🌟 TTL=3600초 (1시간) 설정 및 타임아웃 30초 추가
-@st.cache_data(show_spinner="이미지에서 텍스트 추출 중...", ttl=3600, suppress_st_warning=True)
+# 🌟 suppress_st_warning 인수를 제거하여 TypeError 방지. TTL=1시간 설정
+@st.cache_data(show_spinner="이미지에서 텍스트 추출 중...", ttl=3600)
 def detect_text_from_image(image_bytes):
     
     client = get_vision_client()
@@ -173,7 +174,7 @@ def detect_text_from_image(image_bytes):
 
     except Exception as e:
         error_msg = str(e)
-        # 🌟 오류 메시지 필터링: HTML 태그로 인식될 수 있는 복잡한 HTTP 정보를 제거
+        # 🌟 오류 메시지 필터링 (InvalidCharacterError 방지)
         if "HTTPConnection" in error_msg or "ConnectTimeoutError" in error_msg:
             return "OCR 처리 중 인증/네트워크 시간 초과 오류가 발생했습니다. (GCP Secrets 및 할당량 확인 필요)"
             

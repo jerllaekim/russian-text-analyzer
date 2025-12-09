@@ -120,7 +120,7 @@ def get_pos_ru(word: str) -> str:
             return POS_MAP.get(pos_abbr_base, '품사') 
     return '품사'
 
-# ---------------------- OCR 클라이언트 및 함수 (Gemini 디버깅 통합) ----------------------
+# ---------------------- OCR 클라이언트 및 함수 ----------------------
 
 def get_gemini_client():
     api_key = st.secrets.get("GEMINI_API_KEY", os.getenv("GEMINI_API_KEY"))
@@ -128,13 +128,6 @@ def get_gemini_client():
 
 @st.cache_resource(show_spinner=False)
 def get_vision_client():
-    client = get_gemini_client() # Gemini 클라이언트 미리 가져오기
-    # Gemini 클라이언트가 없으면 Vision API 디버깅 로직 사용 불가
-    if client is None:
-        # 이 경우, Secrets가 없거나 잘못되어도 Gemini가 디버깅 메시지를 출력할 수 없음
-        st.error("Vision API 초기화 전에 Gemini API 키가 설정되어야 Secrets 디버깅 메시지를 볼 수 있습니다.")
-        return None
-
     try:
         # Secrets에서 JSON 키를 불러옴
         key_json = st.secrets.get("GOOGLE_APPLICATION_CREDENTIALS_JSON") 
@@ -146,32 +139,16 @@ def get_vision_client():
         import google.auth
         import google.cloud.vision
         
-        # 🌟🌟🌟 1. JSON 유효성 검사 및 로드 시도 (오류 포착 지점) 🌟🌟🌟
+        # 🌟🌟🌟 1. JSON 유효성 검사 및 로드 시도 (Gemini 디버깅 제거, 원본 오류 포착) 🌟🌟🌟
         try:
-            # 유니코드 제어 문자를 강제로 무시하고 ASCII로 클린하게 만듭니다. (Invalid control character 해결 시도)
+            # 유니코드 제어 문자를 강제로 무시하고 ASCII로 클린하게 만듭니다. (최대한 오류 회피)
             cleaned_json_string = key_json.encode('ascii', 'ignore').decode('ascii')
             key_data = json.loads(cleaned_json_string)
 
         except Exception as json_error:
-            # JSON 로드 실패 시, Gemini에게 오류 분석 요청
-            error_details = f"Python Traceback: {str(json_error)}\n\n문제의 JSON 시작 부분: {key_json[:300]}"
-            
-            debugging_prompt = f"""
-            주어진 Python Traceback과 JSON 시작 부분을 분석하여, JSON 파싱 오류(특히 'Invalid control character' 오류)가 발생한 이유와, 사용자가 Secrets 파일에 어떤 문자를 잘못 입력했는지 설명해 주세요.
-
-            {error_details}
-            """
-            
-            try:
-                gemini_res = client.models.generate_content(
-                    model="gemini-2.0-flash", 
-                    contents=debugging_prompt
-                )
-                st.error("🚨 JSON 키 파싱 오류 발생 (Gemini 분석 결과)")
-                st.info(gemini_res.text.strip())
-            except Exception:
-                st.error("🚨 JSON 키 파싱 오류 발생. Gemini 디버깅도 실패했습니다. Secrets의 문자열을 확인해주세요.")
-                
+            # JSON 로드 실패 시, Python의 원본 오류를 출력
+            st.error("🚨 Secrets JSON 파싱 오류 발생: 유효하지 않은 문자 포함")
+            st.code(f"Secrets Value Start:\n{key_json[:300]}...\n\nJSON Error: {str(json_error)}", language="python")
             return None
         
         # 2. Credential 생성 및 클라이언트 반환
@@ -219,8 +196,6 @@ def detect_text_from_image(image_bytes):
 
 
 # ---------------------- 1. Gemini 연동 함수 (TTL 및 JSON Schema 적용) ----------------------
-
-# (이하 Gemini 및 UI 코드는 이전과 동일하게 유지됩니다.)
 
 def get_word_info_schema(is_verb: bool):
     """Gemini 응답의 JSON 스키마를 정의합니다."""
@@ -466,6 +441,7 @@ if uploaded_file is not None:
     image_bytes = uploaded_file.getvalue()
     ocr_result = detect_text_from_image(image_bytes) 
     
+    # OCR 결과 출력 로직
     if ocr_result and not ocr_result.startswith(("OCR API 클라이언트 초기화 실패", "Vision API 오류", "OCR 처리 중 오류 발생")):
         st.session_state.ocr_output_text = ocr_result
         st.session_state.input_text_area = ocr_result

@@ -708,6 +708,29 @@ if word_info:
     else:
         st.info("선택된 단어의 정보가 로드 중이거나, 표시할 정보가 없습니다.")
 
+        # ---------------------- 8.5. Quizlet 연동 섹션 (추가됨) ----------------------
+if rows:
+    st.markdown("#### 🎓 Quizlet으로 단어장 만들기")
+    
+    # Quizlet 가져오기용 텍스트 생성 (단어 \t 뜻 \n 구조)
+    quizlet_text = ""
+    for row in rows:
+        quizlet_text += f"{row['기본형']}\t{row['대표 뜻']}\n"
+    
+    col_copy, col_link = st.columns([2, 1])
+    
+    with col_copy:
+        st.text_area("아래 텍스트를 복사해서 Quizlet '가져오기'에 붙여넣으세요:", 
+                     value=quizlet_text, 
+                     height=100,
+                     help="Quizlet의 '텍스트에서 가져오기' 기능을 사용하면 편리합니다.")
+        
+    with col_link:
+        st.markdown("<br>", unsafe_allow_html=True) # 간격 맞춤
+        quizlet_url = "https://quizlet.com/create-set"
+        st.link_button("🚀 Quizlet 사이트로 이동", quizlet_url, use_container_width=True)
+        st.caption("로그인 후 '텍스트에서 가져오기'를 클릭하세요.")
+
 
 # ---------------------- 9. 하단: 한국어 번역본 ----------------------
 st.divider()

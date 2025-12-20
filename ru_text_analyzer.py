@@ -20,7 +20,7 @@ NEW_DEFAULT_TEXT = """Том живёт в Санкт-Петербурге уж�
 DEFAULT_TEST_TEXT = "Человек идёт по улице. Это тестовая строка. Хорошо. Я часто читаю эту книгу."
 
 mystem = Mystem()
-YOUTUBE_VIDEO_ID = "wJ65i_gDfT0" 
+YOUTUBE_VIDEO_ID = "wJ65i_gDfT0"
 IMAGE_FILE_PATH = "banner.png"
 
 # --- 세션 상태 초기화 함수 (AttributeError 방지) ---

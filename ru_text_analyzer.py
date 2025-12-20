@@ -139,7 +139,6 @@ def get_vision_client():
     try:
         # Secrets에서 JSON 키를 불러옴
         key_json = st.secrets.get("GOOGLE_APPLICATION_CREDENTIALS_JSON") 
-@@ -146,32 +139,16 @@
         import google.auth
         import google.cloud.vision
 

@@ -8,12 +8,6 @@ from google import genai
 import urllib.parse
 from typing import Union
 
-# ---------------------- 0. 초기 설정 및 상수 ----------------------
-
-# 이 부분에서 발생한 SyntaxError(U+00A0)를 해결하기 위해 라인을 새로 정리했습니다.
-YOUTUBE_VIDEO_ID = "wJ65i_gDfT0"
-IMAGE_FILE_PATH = "banner.png"
-
 # --- 세션 상태 초기화 함수 (AttributeError 방지) ---
 def initialize_session_state():
     if "selected_words" not in st.session_state:

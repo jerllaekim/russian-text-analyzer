@@ -434,7 +434,7 @@ def get_highlighted_html(text_to_process, highlight_words):
 # ---------------------- 6. UI 배치 및 메인 로직 ----------------------
 
 # --- 6.1. OCR 및 텍스트 입력 섹션 ---
-st.subheader("이미지에서 텍스트 추출")
+st.subheader("이미지에서 텍스트 추출 (업데이트 예정)")
 uploaded_file = st.file_uploader("JPG, PNG 등 이미지를 업로드하세요", type=["jpg", "jpeg", "png"])
 
 if uploaded_file is not None:

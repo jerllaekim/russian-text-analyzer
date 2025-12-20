@@ -176,8 +176,6 @@ def get_vision_client():
             return None
 
         # 2. Credential 생성 및 클라이언트 반환
-@@ -220,8 +197,6 @@
-
 # ---------------------- 1. Gemini 연동 함수 (TTL 및 JSON Schema 적용) ----------------------
 
 # (이하 Gemini 및 UI 코드는 이전과 동일하게 유지됩니다.)
@@ -185,7 +183,6 @@ def get_vision_client():
 def get_word_info_schema(is_verb: bool):
     """Gemini 응답의 JSON 스키마를 정의합니다."""
     schema = {
-@@ -466,317 +441,318 @@
     image_bytes = uploaded_file.getvalue()
     ocr_result = detect_text_from_image(image_bytes) 
 

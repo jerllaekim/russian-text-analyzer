@@ -677,8 +677,10 @@ st.subheader("단어 목록 (기본형 기준)")
 selected = st.session_state.selected_words
 word_info = st.session_state.word_info
 
-if word_info:
-    rows = []
+# 🌟 중요: rows를 조건문 밖에서 빈 리스트로 먼저 초기화합니다.
+rows = []
+
+if word_info and selected:
     processed_lemmas = set()
     
     for tok in selected:
@@ -686,6 +688,7 @@ if word_info:
         lemma = lemmatize_ru(clean_tok)
         if lemma not in processed_lemmas and lemma in word_info:
             info = word_info[lemma]
+            # API 오류가 없는 정상적인 데이터만 리스트에 추가
             if info.get("ko_meanings") and not info["ko_meanings"][0].startswith(("API 할당량 초과 오류", "API 호출 또는 JSON 파싱 오류")):
                 pos = info.get("pos", "품사")
                 
@@ -702,34 +705,28 @@ if word_info:
                 rows.append({"기본형": base_form, "대표 뜻": short})
                 processed_lemmas.add(lemma)
 
-    if rows:
-        df = pd.DataFrame(rows)
-        st.dataframe(df, hide_index=True)
-    else:
-        st.info("선택된 단어의 정보가 로드 중이거나, 표시할 정보가 없습니다.")
-
-        # ---------------------- 8.5. Quizlet 연동 섹션 (추가됨) ----------------------
+# 데이터프레임 표시
 if rows:
+    df = pd.DataFrame(rows)
+    st.dataframe(df, hide_index=True)
+    
+    # --- 8.5. Quizlet 연동 섹션 ---
     st.markdown("#### 🎓 Quizlet으로 단어장 만들기")
     
-    # Quizlet 가져오기용 텍스트 생성 (단어 \t 뜻 \n 구조)
+    # Quizlet용 텍스트 생성
     quizlet_text = ""
     for row in rows:
         quizlet_text += f"{row['기본형']}\t{row['대표 뜻']}\n"
     
     col_copy, col_link = st.columns([2, 1])
-    
     with col_copy:
         st.text_area("아래 텍스트를 복사해서 Quizlet '가져오기'에 붙여넣으세요:", 
-                     value=quizlet_text, 
-                     height=100,
-                     help="Quizlet의 '텍스트에서 가져오기' 기능을 사용하면 편리합니다.")
-        
+                     value=quizlet_text, height=100)
     with col_link:
-        st.markdown("<br>", unsafe_allow_html=True) # 간격 맞춤
-        quizlet_url = "https://quizlet.com/create-set"
-        st.link_button("🚀 Quizlet 사이트로 이동", quizlet_url, use_container_width=True)
-        st.caption("로그인 후 '텍스트에서 가져오기'를 클릭하세요.")
+        st.markdown("<br>", unsafe_allow_html=True)
+        st.link_button("🚀 Quizlet 사이트로 이동", "https://quizlet.com/create-set", use_container_width=True)
+else:
+    st.info("검색창에 단어를 입력하여 분석하면 여기에 목록이 만들어집니다.")
 
 
 # ---------------------- 9. 하단: 한국어 번역본 ----------------------

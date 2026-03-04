@@ -1,8 +1,10 @@
 # requirements.txt 파일 내용
-
 streamlit
 pandas
 google-genai
 google-cloud-vision
 pymystem3==0.1.10
 ruaccent
+pymorphy2
+pymorphy2-dicts-ru
+openpyxl

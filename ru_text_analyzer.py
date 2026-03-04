@@ -9,10 +9,16 @@ from google.cloud import vision
 import io
 import urllib.parse
 from typing import Union
+# ---------------------- 0. 초기 설정 및 상수 ----------------------
 
 mystem = Mystem()
 YOUTUBE_VIDEO_ID = "wJ65i_gDfT0" 
 IMAGE_FILE_PATH = "banner.png"
+
+# 이 부분을 삭제하셔서 에러가 난 거예요! 다시 넣어줍니다.
+DEFAULT_TEST_TEXT = "Человек идёт по улице. Это тестовая строка. Хорошо. Я часто читаю эту книгу."
+NEW_DEFAULT_TEXT = "Том живёт в Санкт-Петербурге уже несколько месяцев..." # (필요하다면 이것도 유지)
+
 # --- 세션 상태 초기화 함수 (AttributeError 방지) ---
 def initialize_session_state():
     if "selected_words" not in st.session_state:

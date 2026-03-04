@@ -144,7 +144,7 @@ def get_vision_client():
             # 유니코드 제어 문자를 강제로 무시하고 ASCII로 클린하게 만듭니다. (최대한 오류 회피)
             cleaned_json_string = key_json.encode('ascii', 'ignore').decode('ascii')
             key_data = json.loads(cleaned_json_string)
-
+ㅊ
         except Exception as json_error:
             # JSON 로드 실패 시, Python의 원본 오류를 출력
             st.error("🚨 Secrets JSON 파싱 오류 발생: 유효하지 않은 문자 포함")
@@ -160,7 +160,7 @@ def get_vision_client():
         st.error(f"Vision API 클라이언트 초기화 오류: {e}")
         return None
 
-# 🌟 TTL=3600초 (1시간) 설정 및 타임아웃 30초 추가
+# 🌟 TTL=3600초 (1시간) 설정 및 타임아웃 30초 추ㅊ
 @st.cache_data(show_spinner="이미지에서 텍스트 추출 중...", ttl=3600)
 def detect_text_from_image(image_bytes):
     
@@ -456,7 +456,99 @@ st.button(
     on_click=load_default_text,
     help="교재 연습용 텍스트를 입력창에 반영합니다."
 )
+# ---------------------- [추가] 6.0. 러시아어 괄호 텍스트 엑셀 변환 기능 ----------------------
 
+def to_plural_nominative(word):
+    parsed = morph.parse(word)[0] # 기존 코드의 mystem 대신 pymorphy2 사용 권장 (복수주격 변환용)
+    if "plur" in parsed.tag and "nomn" not in parsed.tag:
+        for form in parsed.lexeme:
+            if "plur" in form.tag and "nomn" in form.tag:
+                return form.word
+    return word
+
+def save_to_excel(df):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        df.to_excel(writer, index=False, sheet_name='Processed Data')
+        ws = writer.sheets['Processed Data']
+        ws.column_dimensions['A'].width = 100
+        ws.column_dimensions['B'].width = 50
+        for row in ws.iter_rows(min_row=2, max_row=ws.max_row, min_col=1, max_col=1):
+            for cell in row:
+                cell.alignment = cell.alignment.copy(wrap_text=True)
+    return output.getvalue()
+
+# UI 부분
+with st.expander("📂 괄호 텍스트 분석 및 엑셀 다운로드 (교재 정리용)"):
+    st.write("텍스트 파일(.txt)을 업로드하면 괄호 안의 단어를 분석하여 엑셀 파일로 만들어드립니다.")
+    excel_upload = st.file_uploader("분석할 TXT 파일을 선택하세요", type=["txt"], key="excel_uploader")
+    
+    if excel_upload:
+        from io import BytesIO
+        import pymorphy2
+        
+        # pymorphy2는 루프 밖에서 선언하거나 캐싱하는 것이 좋지만, 
+        # 일단 기능 통합을 위해 내부에서 선언합니다.
+        morph_py = pymorphy2.MorphAnalyzer()
+        
+        content = excel_upload.getvalue().decode("utf-8")
+        processed_data = []
+        
+        # 분석 로직 실행
+        with st.spinner('엑셀 파일 생성 중...'):
+            lines = content.splitlines()
+            for line in lines:
+                if not line.strip(): continue
+                sentences = re.split(r'(?<!\w\.\w.)(?<![А-Яа-я]\.)(?<![A-Za-z]\.)(?<!\.\d)[.!?]\s+', line.strip())
+                for sentence in sentences:
+                    if not sentence: continue
+                    original_bracket_contents = []
+
+                    def lemmatize_brackets(match):
+                        original_text = match.group(1)
+                        words = original_text.split()
+                        # russian_prepositions는 상단에 정의되어 있어야 함
+                        filtered_words = [w for w in words if w.lower() not in russian_prepositions]
+                        if not filtered_words: return ""
+                        
+                        lemmatized_words = []
+                        for word in filtered_words:
+                            p = morph_py.parse(word)[0]
+                            lex = p.normal_form
+                            if "PRTF" in p.tag: lex = f"{lex} (형동사)"
+                            if "GRND" in p.tag: lex = f"{lex} (부동사)"
+                            if "plur" in p.tag: # 복수 주격 변환
+                                for form in p.lexeme:
+                                    if "plur" in form.tag and "nomn" in form.tag:
+                                        lex = form.word
+                            lemmatized_words.append(lex)
+                        original_bracket_contents.append(original_text)
+                        return f"({', '.join(lemmatized_words)})"
+
+                    proc_sent = re.sub(r'\((.*?)\)', lemmatize_brackets, sentence)
+                    if original_bracket_contents:
+                        processed_data.append({
+                            "Sentence": proc_sent.strip(),
+                            "Original Words": ", ".join(original_bracket_contents),
+                        })
+            
+            if processed_data:
+                df_excel = pd.DataFrame(processed_data)
+                excel_bytes = save_to_excel(df_excel)
+                st.success("변환 완료!")
+                st.download_button(
+                    label="📥 분석된 엑셀 파일 다운로드",
+                    data=excel_bytes,
+                    file_name=f"analysis_{excel_upload.name.replace('.txt', '')}.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True
+                )
+            else:
+                st.warning("괄호()가 포함된 문장을 찾지 못했습니다.")
+
+# ----------------------------------------------------------------------------------
+
+st.subheader("분석 대상 텍스트") # 이 줄이 원래 코드의 295번 줄입니다.
 st.subheader("분석 대상 텍스트")
 current_text = st.text_area(
     "러시아어 텍스트를 입력하거나 위에 업로드된 텍스트를 수정하세요",

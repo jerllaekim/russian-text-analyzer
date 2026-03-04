@@ -144,7 +144,6 @@ def get_vision_client():
             # 유니코드 제어 문자를 강제로 무시하고 ASCII로 클린하게 만듭니다. (최대한 오류 회피)
             cleaned_json_string = key_json.encode('ascii', 'ignore').decode('ascii')
             key_data = json.loads(cleaned_json_string)
-ㅊ
         except Exception as json_error:
             # JSON 로드 실패 시, Python의 원본 오류를 출력
             st.error("🚨 Secrets JSON 파싱 오류 발생: 유효하지 않은 문자 포함")

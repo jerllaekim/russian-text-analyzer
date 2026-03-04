@@ -10,7 +10,9 @@ import io
 import urllib.parse
 from typing import Union
 
-
+mystem = Mystem()
+YOUTUBE_VIDEO_ID = "wJ65i_gDfT0" 
+IMAGE_FILE_PATH = "banner.png"
 # --- 세션 상태 초기화 함수 (AttributeError 방지) ---
 def initialize_session_state():
     if "selected_words" not in st.session_state:

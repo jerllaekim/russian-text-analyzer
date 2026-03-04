@@ -193,11 +193,12 @@ def detect_text_from_image(image_bytes):
 # ---------------------- 1. Gemini 연동 함수 (TTL 및 JSON Schema 적용) ----------------------
 
 def get_word_info_schema(is_verb: bool):
-    """Gemini 응답의 JSON 스키마를 정의합니다."""
+    """Gemini 응답의 JSON 스키마: grammatical_info(격 정보) 필드 추가"""
     schema = {
         "type": "object",
         "properties": {
             "ko_meanings": {"type": "array", "items": {"type": "string"}, "description": "단어의 한국어 뜻 목록"},
+            "grammatical_info": {"type": "string", "description": "단어의 문법적 분석 (예: 명사 대격, 형용사 생격, 동사 현재 3인칭 등)"},
             "examples": {
                 "type": "array",
                 "items": {
@@ -211,7 +212,7 @@ def get_word_info_schema(is_verb: bool):
                 "description": "최대 두 개의 예문과 그 번역"
             }
         },
-        "required": ["ko_meanings", "examples"]
+        "required": ["ko_meanings", "grammatical_info", "examples"]
     }
 
     if is_verb:
@@ -221,25 +222,29 @@ def get_word_info_schema(is_verb: bool):
                 "imp": {"type": "string", "description": "불완료상 동사"},
                 "perf": {"type": "string", "description": "완료상 동사"}
             },
-            "required": ["imp", "perf"],
-            "description": "동사의 상(aspect) 쌍"
+            "required": ["imp", "perf"]
         }
         schema['required'].append('aspect_pair')
     
     return schema
 
-# 🌟 TTL=300초 (5분) 설정: 캐시를 사용하여 API 호출 횟수 관리
-@st.cache_data(show_spinner=False, ttl=60 * 5) 
+@st.cache_data(show_spinner=False, ttl=300)
 def fetch_from_gemini(word, lemma, pos):
     client = get_gemini_client()
     if not client:
-        return {"ko_meanings": [f"'{word}'의 API 키 없음 (GEMINI_API_KEY 설정 필요)"], "examples": []}
+        return {"ko_meanings": ["API 키 없음"], "grammatical_info": "분석 불가", "examples": []}
     
     is_verb = (pos == '동사')
     
-    # JSON Schema와 system_instruction 설정하여 JSON 출력을 강제함
+    # 격 변화 분석을 강조하는 시스템 인스트럭션
+    system_instruction = (
+        "너는 러시아어-한국어 학습 도우미이다. 요청된 단어의 정보를 JSON으로만 출력한다. "
+        "중요: 입력된 단어(word)가 명사/형용사/대명사라면 해당 형태가 문장에서 어떤 '격(Case)'으로 쓰였는지(예: 주격, 생격, 역격, 대격, 조격, 전치격) 분석하여 'grammatical_info'에 적어라. "
+        "동사라면 시제와 인칭을 적어라. 한국어 뜻은 간단히 핵심만 제공한다."
+    )
+    
     config = {
-        "system_instruction": "너는 러시아어-한국어 학습 도우미이다. 요청된 단어에 대한 정보를 제공하며, 절대로 부가적인 설명을 넣지 말고 오직 요청된 JSON 형식의 데이터만 출력한다. 한국어 뜻은 간단해야 한다.",
+        "system_instruction": system_instruction,
         "response_mime_type": "application/json",
         "response_schema": get_word_info_schema(is_verb),
     }
